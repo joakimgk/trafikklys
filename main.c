@@ -31,9 +31,10 @@ void send_string(char *s)
 	}
 }
 
-int i = 0;
-unsigned char program[256];
-unsigned char ID = -1;
+volatile int i = 0;
+volatile unsigned char program[256];
+volatile unsigned char ID;
+volatile unsigned int ID_mottatt;
 
 int main(void){
 	
@@ -56,13 +57,12 @@ int main(void){
 		
 	// blink leds until SW0 is pressed
 	int state = 0;
-	unsigned char input = -1;
+	unsigned char input = 0;
 	while (input != 0b11111110) {  // NB! inverted logic, also on inputs!
 		input = PINA;
 		
 		PORTB = (state++ % 2 == 0 ? 0xFF : 0x00);
-		_delay_ms(SLOW); 
-		send_char(input);
+		_delay_ms(SLOW);
 	}
 	
 	// 
@@ -71,11 +71,14 @@ int main(void){
 	
 	// then blink rapidly until byte (ID) is received
 	state = 0;
-	while (ID < 0) {
+	ID = 0x00;
+	ID_mottatt = 0;
+	while (ID_mottatt == 0) {
 		PORTB = (state++ % 2 == 0 ? 0xFF : 0x00);
 		_delay_ms(RAPID); 
 	}
 	send_char(ID);  // echo
+	send_char('x');  // echo
 	
 	// after that, discard all bytes that don't start with ID (in 3 first bits)
 			
@@ -98,12 +101,18 @@ ISR ( USART_RXC_vect , ISR_BLOCK )
 	char ReceivedByte;
 	char payload;
 	ReceivedByte = UDR;
+	//send_char(ReceivedByte);
 	
-	if (ID < 0) {
+	if (ID_mottatt == 0) {
+		//char initmelding[] = "--ID received!--";
+		//send_string(initmelding);
+		
 		ID = (ReceivedByte & 0b11100000);
-		char initmelding[] = "--ID received!--";
-		send_string(initmelding);
+		ID_mottatt = 1;
 	} else {
+		
+		//char initmelding[] = "her";
+		//send_string(initmelding);
 	
 		if ((ReceivedByte & 0b11100000) == ID) {
 			
