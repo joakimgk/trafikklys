@@ -32,6 +32,7 @@ void send_string(char *s)
 }
 
 volatile int i = 0;
+volatile int step = 0;
 volatile unsigned char program[256];
 volatile unsigned char ID;
 volatile unsigned int ID_mottatt;
@@ -46,10 +47,14 @@ int main(void){
 	// Load lower 8- bits of the baud rate value into the low byte of the UBRR register
 	UBRRL = BAUD_PRESCALE ;
 
+	UCSRB |= (1 << RXCIE );
+	sei();
+
 	DDRB = 0xFF; // set PORTB for output
 	PORTB = 0x00; // turn ON all LEDs initially (to indicate ready)
 
 	DDRA = 0x00; // set PORTA for input
+	
 	
 	// INIT:
 	char initmelding[] = "Press SW0 to start initialization...";
@@ -77,19 +82,24 @@ int main(void){
 		PORTB = (state++ % 2 == 0 ? 0xFF : 0x00);
 		_delay_ms(RAPID); 
 	}
-	send_char(ID);  // echo
-	send_char('x');  // echo
+	send_char((ID >> 5) ^ 0b11000000);  // echo
+
+	char initmelding3[] = "Starting...";
+	send_string(initmelding3);
+	
 	
 	// after that, discard all bytes that don't start with ID (in 3 first bits)
 			
 	PORTB = 0xFF; // turn OFF all LEDs
 	
-	int step = 0;
+	step = 0;
 	while (1) {
 		if (step < i) {
 			PORTB = program[step++];
-			_delay_ms(SLOW);
+		} else {
+			//send_char('.');
 		}
+		_delay_ms(SLOW);
 	}
 	return 1;
 }
@@ -101,7 +111,6 @@ ISR ( USART_RXC_vect , ISR_BLOCK )
 	char ReceivedByte;
 	char payload;
 	ReceivedByte = UDR;
-	//send_char(ReceivedByte);
 	
 	if (ID_mottatt == 0) {
 		//char initmelding[] = "--ID received!--";
@@ -115,12 +124,16 @@ ISR ( USART_RXC_vect , ISR_BLOCK )
 		//send_string(initmelding);
 	
 		if ((ReceivedByte & 0b11100000) == ID) {
+			//send_char('j');
 			
-			if ((ReceivedByte & 0b00011111) == 31) { 
+			if ((ReceivedByte & 0b00011111) == 0b00011111) { 
 				i = 0; // RESET: Prepare for new block of data (program)
+				step = 0;
+				//send_char('r');
 			} else {
-				payload = (ReceivedByte & 0b00011100) << 3;
-				program[i] = payload;
+				//send_char('b');
+				payload = (ReceivedByte & 0b00011100) >> 2;
+				program[i++] = (payload ^ 0b11111111);  // inverted logic
 			}
 		}
 	}
