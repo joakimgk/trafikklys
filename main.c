@@ -14,6 +14,8 @@
 
 # define SLOW 1000
 # define RAPID 250
+# define BUFFER_LENGTH 125
+# define TEMPO_SCALE 10
 
 void send_char(char c)
 {
@@ -28,14 +30,25 @@ void send_string(char *s)
 		send_char(*s);
 		s++;
 	}
+	send_char('\r');
+	send_char('\n');
 }
 
+// program to play back
+volatile unsigned char program[BUFFER_LENGTH];
+// receive buffer
+volatile unsigned char buffer[BUFFER_LENGTH];
+volatile int buf_length = 0;
 
+// length of current program
 volatile int length = 0;
+// record position
 volatile int rec = 0;
+// playback position
 volatile int step = 0;
+// playback delay (ms)
 volatile int tempo = RAPID;
-volatile unsigned char program[256];
+
 volatile unsigned char ID;
 volatile unsigned int ID_mottatt;
 
@@ -84,19 +97,24 @@ int main(void){
 		PORTB = (state++ % 2 == 0 ? 0xFF : 0x00);
 		_delay_ms(RAPID); 
 	}
-	send_char((ID >> 5) ^ 0b11000000);  // echo
+	
+	// echo
+	char c = ((ID & 0b00100000) == 0b00100000 ? '1' : '0');
+	char b = ((ID & 0b01000000) == 0b01000000 ? '1' : '0');
+	char a = ((ID & 0b10000000) == 0b10000000 ? '1' : '0');
+	char echo[7] = {'I','D','=',a,b,c,0x00};
+	send_string(echo);
 
 	char initmelding3[] = "Starting...";
 	send_string(initmelding3);
-	
-	
-	// after that, discard all bytes that don't start with ID (in 3 first bits)
 			
-	PORTB = 0xFF; // turn OFF all LEDs
-	
+	// create an initial program to keep the loop busy until first program is received (and started)
+	program[0] = 0xFF;
+	length = 1;
 	step = 0;
+	
 	while (1) {
-		if ((step >= length) || (step == 256)) step = 0;
+		if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 		
 		PORTB = program[step++];
 		
@@ -108,6 +126,7 @@ int main(void){
 void my_delay_ms(int n) {
 	int mem = tempo;
 	while(n--) {
+		// interrupt delay if tempo changes
 		if (mem != tempo) break;
 		_delay_ms(1);
 	}
@@ -118,49 +137,64 @@ ISR ( USART_RXC_vect , ISR_BLOCK )
 	char ReceivedByte;
 	char payload;
 	ReceivedByte = UDR;
+	char _ID_mask = 0b11100000;
+	char _instruction_mask = 0b00000011;
+	char _payload_mask = 0b00011100;
+	char _tempo_mask = 0b11111100;
+	char _invert_mask = 0b11111111;
+	
+	char _reset_instruction = 0b00000011;
+	char _tempo_instruction = 0b00000001;
 	
 	if (ID_mottatt == 0) {
-		//char initmelding[] = "--ID received!--";
-		//send_string(initmelding);
-		
-		ID = (ReceivedByte & 0b11100000);
+		ID = (ReceivedByte & _ID_mask);
 		ID_mottatt = 1;
+		//send_char('i');
 	} else {
-		
-		//char initmelding[] = "her";
-		//send_string(initmelding);
 	
-		if ((ReceivedByte & 0b11100000) == ID) {
-			//send_char('j');
+		if ((ReceivedByte & _ID_mask) == ID) {
+			// addressed bytes (to this receiver):
 			
-			//char resetPattern = (0b00011111 & 0b00011111);
-			
-			if ((ReceivedByte & 0b00000011) == 0b00000011) { 
-				length = 0; // RESET: Prepare for new block of data (program)
-				step = 0;
+			if ((ReceivedByte & _instruction_mask) == _reset_instruction) { 
+				buf_length = 0; // RESET: Prepare for new block of data (program)
 				rec = 0;
 				//send_char('r');
 
 			} else {
 				//send_char('b');
-				payload = (ReceivedByte & 0b00011100) >> 2;
+				payload = (ReceivedByte & _payload_mask) >> 2;
 				
-				char a = (payload & 0b00000001 == 0b00000001 ? '1' : '0');
-				char b = (payload & 0b00000010 == 0b00000010 ? '1' : '0');
-				char c = (payload & 0b00000100 == 0b00000100 ? '1' : '0');
-				char tmp[6] = {rec+48,':',a,b,c, 0x00};
+				/*
+				char a = ((payload & 0b00000001) == 0b00000001 ? '1' : '0');
+				char b = ((payload & 0b00000010) == 0b00000010 ? '1' : '0');
+				char c = ((payload & 0b00000100) == 0b00000100 ? '1' : '0');
+				char tmp[6] = {rec+48,':',a,b,c,0x00};
 				send_string(tmp);
+				*/
 				
-				program[rec++] = (payload ^ 0b11111111);  // inverted logic
+				buffer[rec++] = (payload ^ _invert_mask);  // inverted logic on LEDs
 				
-				if (rec >= 256) rec = 0;
-				else ++length;
+				if (rec >= BUFFER_LENGTH) rec = 0;
+				else ++buf_length;
 			}
 		} else {
 			// common reception stuff:
-			if ((ReceivedByte & 0b00000011) == 0b00000001) {
-				payload = (ReceivedByte & 0b11111100);
-				tempo = payload * 10;	
+			
+			// change tempo
+			if ((ReceivedByte & _instruction_mask) == _tempo_instruction) {
+				//send_char('T');
+				payload = (ReceivedByte & _tempo_mask);
+				tempo = payload * TEMPO_SCALE;
+				
+			// start new program
+			} else if ((ReceivedByte & _instruction_mask) == _reset_instruction) {
+				//send_char('S');
+				// copy buffer to program
+				for (int j = 0; j < buf_length; j++) 
+					program[j] = buffer[j];
+				
+				length = buf_length;
+				step = 0;
 			}
 		}
 	}
