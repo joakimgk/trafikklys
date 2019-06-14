@@ -88,6 +88,7 @@ char RESPONSE_BUFFER[DEFAULT_BUFFER_SIZE];
 enum PROGRAM_STATES
 {
 	START,
+	RUNNING,
 	GET_PROGRAM,
 	RUN_PROGRAM,
 	SWITCH_PROGRAM
@@ -100,16 +101,18 @@ enum COMANDS
 	RESET = 0x04
 };
 
-// program to play back
-volatile unsigned char program[BUFFER_LENGTH];
-// receive buffer
-volatile unsigned char buffer[BUFFER_LENGTH];
-volatile int buf_length = 0;
+// program buffers
+volatile unsigned char program_a[BUFFER_LENGTH];
+volatile unsigned char program_b[BUFFER_LENGTH];
+// pointer to current program buffer (being played back)
+volatile unsigned char *program = program_a;
+volatile unsigned char *rec_program = program_b;
+volatile unsigned char *cur_program;
 
 // length of current program
 volatile int length = 0;
-// record position
-volatile int rec = 0;
+// length of received program
+volatile int rec_length = 0;
 // playback position
 volatile int step = 0;
 // playback delay (ms)
@@ -373,7 +376,7 @@ ISR (TIMER1_OVF_vect)    // Timer1 ISR
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 		
-	PORTB = program[step++];
+	PORTB = *(program + step++);
 
 	TCNT1 = tempo;   // for 1 sec at 16 MHz
 }
@@ -399,17 +402,21 @@ void setupTimerISR()
 	TIMSK = (1 << TOIE1) ;   // Enable timer1 overflow interrupt(TOIE1)
 }
 
-bool start()
+void sendReady()
 {
-	return true;
+	char _buffer[150];
+	memset(_buffer, 0, 150);
+	sprintf(_buffer, "KLAR FOR PROGRAM");
+	ESP8266_Send(_buffer);
 }
+
 
 int main(void)
 {
 	char _buffer[150];
 	uint8_t Connect_Status;
 	#ifdef SEND_DEMO
-	uint8_t Sample = 0;
+	//uint8_t Sample = 0;
 	#endif
 
 	USART_Init(115200);						/* Initiate USART baud rate */
@@ -417,8 +424,8 @@ int main(void)
 	setupTimerISR();
 	
 	// create an initial program to keep the loop busy until first program is received (and started)
-	program[0] = 0xFF;
-	program[1] = 0x00;	
+	*program = 0xFF;
+	*(program + 1) = 0x00;	
 	length = 2;
 	step = 0;	
 	
@@ -455,6 +462,8 @@ int main(void)
 	ESP8266_Start(0, DOMAIN, PORT);
 
 	USART_SendString("Starter mainloop.");
+	
+	sendReady();
 
 	while(1)
 	{
@@ -465,39 +474,54 @@ int main(void)
 		if(Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED)
 			ESP8266_Start(0, DOMAIN, PORT);
 			
+		/*
 		#ifdef SEND_DEMO
 		memset(_buffer, 0, 150);
 		sprintf(_buffer, "GET /update?api_key=%s&field1=%d", API_WRITE_KEY, Sample++);
 		ESP8266_Send(_buffer);
-		_delay_ms(5000);	/* Thingspeak server delay */
+		_delay_ms(5000);	// Thingspeak server delay 
 		#endif
+		*/
 		
 		#ifdef STATE_MACHINE
 		memset(_buffer, 0, 150);
-		
-		switch state
+		int len = Read_Data(_buffer);
+	
+		if (0 < len)
 		{
-			case START:
-				bool startok = start();
-				if (startok) 
-					state = GET_PROGRAM;
-			case GET_PROGRAM:
-				sendReady();
-				bool program_ok = receiveProgram();	
-				if (program_ok)	
-					state = SWITCH_PROGRAM;
-			case SWITCH_PROGRAM
-				switchProgram();
-				state = RUN_PROGRAM;
-			case RUN_PROGRAM
-				if (command == GET_TEMPO)
-					setTempo();
-				if (command == NEW_PROGRAM)
-					state = GET_PROGRAM
-				if (command == RESET)
-					state = SWITCH_PROGRAM;
-			default:
-				break;
+			int command = _buffer[0];
+			
+			switch (command) {
+				case 0x01:  // TEMPO
+					tempo = _buffer[1];
+					break;
+				case 0x02:  // RESET (restart nåværende program)
+					step = 0;
+					break;
+				case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
+					for (int i = 0; i < _buffer[1]; i++) {
+						*(rec_program + i) = _buffer[2 + i];
+					}
+					//memcpy(rec_program, &_buffer[2], _buffer[1]);
+					
+					rec_length = _buffer[1];
+					break;
+				case 0x04: // BYTT PROGRAM
+					cur_program = program;
+					program = rec_program;
+					rec_program = cur_program;
+					length = rec_length;
+					
+					step = 0;
+					break;
+				default:
+					break;
+			}
+			
+		}
+		else
+		{
+			_delay_ms(100);
 		}
 		
 		//sprintf(_buffer, "GET /channels/%s/feeds/last.txt", CHANNEL_ID);

@@ -27,18 +27,32 @@ while True:
         #print >>sys.stderr, 'connection from', client_address
         print ("Connection from ", client_address)
         # Receive the data in small chunks and retransmit it
+		
+		# vent på "KLAR FOR PROGRAM"
+		# send tempo
+		# (send nytt program)
+		
         while True:
             data = connection.recv(256)
             #print >>sys.stderr, 'received "%s"' % data
             print("Mottatt data: ", data)
-            if data:
-                #print >>sys.stderr, 'sending data back to the client'
-                print("Send data tilbake")
-                connection.sendall(data)
-            else:
-                #print >>sys.stderr, 'no more data from', client_address
-                print("Ingen flere data")
-                break
+            if data == "KLAR FOR PROGRAM":
+                print("Da kjører vi!")
+                break;  # bryt ut av while True
+		#
+		
+        input('Tast for å fortsette')      # If you use Python 3
+		
+        tempoSent = false
+        programSent = false
+		
+        tempoPakke = '\x01\x01\x32'  # cmd = 1 | len = 1 | payload = 50 (0x32)
+        while True:  # simulere UX -- skal ikke motta noe
+		    # send tempo
+            if not tempoSent:
+                connection.sendall(tempoPakke)
+                tempoSent = true
+                print("Tempo sendt...")
 
     finally:
         # Clean up the connection
