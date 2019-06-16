@@ -83,7 +83,7 @@ uint32_t TimeOut = 0;
 char RESPONSE_BUFFER[DEFAULT_BUFFER_SIZE];
 
 // Blinkeprogramting
-#define STATE_MACHINE
+// #define STATE_MACHINE
 
 enum PROGRAM_STATES
 {
@@ -104,10 +104,6 @@ enum COMANDS
 // program buffers
 volatile unsigned char program_a[BUFFER_LENGTH];
 volatile unsigned char program_b[BUFFER_LENGTH];
-// pointer to current program buffer (being played back)
-volatile unsigned char *program = program_a;
-volatile unsigned char *rec_program = program_b;
-volatile unsigned char *cur_program;
 
 // length of current program
 volatile int length = 0;
@@ -376,16 +372,13 @@ ISR (TIMER1_OVF_vect)    // Timer1 ISR
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 		
-	PORTB = *(program + step++);
+	PORTB = program_a[step++];  // *(program + step++);
 
 	TCNT1 = tempo;   // for 1 sec at 16 MHz
 }
 
 
 
-void LEDstate(unsigned int state) {
-	PORTB = 0xFF ^ state;
-}
 
 void sendHello()
  {
@@ -406,26 +399,26 @@ void sendReady()
 {
 	char _buffer[150];
 	memset(_buffer, 0, 150);
-	sprintf(_buffer, "KLAR FOR PROGRAM");
+	sprintf(_buffer, "KLAR FOR PROGRAM\r\n");
 	ESP8266_Send(_buffer);
 }
 
 
 int main(void)
 {
-	char _buffer[150];
+	char uglybugly[150];
 	uint8_t Connect_Status;
 	#ifdef SEND_DEMO
-	//uint8_t Sample = 0;
+	uint8_t Sample = 0;
 	#endif
 
 	USART_Init(115200);						/* Initiate USART baud rate */
 	
-	setupTimerISR();
+	//setupTimerISR();
 	
 	// create an initial program to keep the loop busy until first program is received (and started)
-	*program = 0xFF;
-	*(program + 1) = 0x00;	
+	program_a[0] = 0xFF;
+	program_a[1] = 0x00;
 	length = 2;
 	step = 0;	
 	
@@ -437,13 +430,9 @@ int main(void)
 	DDRB = 0xFF; // set PORTB for output
 	PORTB = 0x00; // turn ON all LEDs initially (to indicate ready)
 	
-	unsigned int state = 1;
+	while (!ESP8266_Begin());
 	
-	while (!ESP8266_Begin()) {
-		PORTB = (state++ % 2 == 0 ? 0x55 : 0x00);
-		_delay_ms(500);
-	}
-	state = 1;
+	USART_SendString("ESP8266_Begin");
 	
 	PORTB = 0xFF;
 		
@@ -461,31 +450,49 @@ int main(void)
 		
 	ESP8266_Start(0, DOMAIN, PORT);
 
-	USART_SendString("Starter mainloop.");
+	USART_SendString("klar ...");
 	
-	sendReady();
-
+	bool sentReady = false;
+	
+	
+	
 	while(1)
 	{
+		_delay_ms(600);
 		
 		Connect_Status = ESP8266_connected();
 		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP)
 			ESP8266_JoinAccessPoint(SSID, PASSWORD);
 		if(Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED)
 			ESP8266_Start(0, DOMAIN, PORT);
-			
+		
 		/*
-		#ifdef SEND_DEMO
-		memset(_buffer, 0, 150);
-		sprintf(_buffer, "GET /update?api_key=%s&field1=%d", API_WRITE_KEY, Sample++);
-		ESP8266_Send(_buffer);
-		_delay_ms(5000);	// Thingspeak server delay 
-		#endif
+		if (!sentReady) {
+			//memset(_buffer, 0, 150*sizeof(char));
+			sprintf(_buffer, "GET /update?api_key=%s&field1=%d", API_WRITE_KEY, Sample++);
+			ESP8266_Send(_buffer);
+			_delay_ms(5000);	// Thingspeak server delay
+			sentReady = true;
+		}
 		*/
 		
+		#ifdef SEND_DEMO
+			
+		///memset(uglybugly, 0, 50);
+		//uglybugly[49] = 0;
+
+		//sprintf(_buffer, "test test");
+		//ESP8266_Send(_buffer);
+		//_delay_ms(5000);	// Thingspeak server delay 
+
+		#endif
+
+		
 		#ifdef STATE_MACHINE
-		memset(_buffer, 0, 150);
-		int len = Read_Data(_buffer);
+		
+		//memset(_buffer, 0, 150);
+		
+		int len = 0; //Read_Data(_buffer);
 	
 		if (0 < len)
 		{
@@ -500,12 +507,14 @@ int main(void)
 					break;
 				case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
 					for (int i = 0; i < _buffer[1]; i++) {
-						*(rec_program + i) = _buffer[2 + i];
+						//   *(rec_program + i) = _buffer[2 + i];
 					}
 					//memcpy(rec_program, &_buffer[2], _buffer[1]);
 					
 					rec_length = _buffer[1];
 					break;
+					/*
+					TODO:
 				case 0x04: // BYTT PROGRAM
 					cur_program = program;
 					program = rec_program;
@@ -514,6 +523,7 @@ int main(void)
 					
 					step = 0;
 					break;
+					*/
 				default:
 					break;
 			}
@@ -521,13 +531,14 @@ int main(void)
 		}
 		else
 		{
-			_delay_ms(100);
+			_delay_ms(600);
 		}
 		
 		//sprintf(_buffer, "GET /channels/%s/feeds/last.txt", CHANNEL_ID);
 		//ESP8266_Send(_buffer);
 		//Read_Data(_buffer);
 		//_delay_ms(600);
+		
 		#endif
 	}
 }

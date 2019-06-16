@@ -32,12 +32,15 @@ while True:
 		# send tempo
 		# (send nytt program)
 		
+        print ('OK')
+		
         while True:
+            print('kødd')
             data = connection.recv(256)
             #print >>sys.stderr, 'received "%s"' % data
             print("Mottatt data: ", data)
             if data == "KLAR FOR PROGRAM":
-                print("Da kjører vi!")
+                print ('Da kjører vi!')
                 break;  # bryt ut av while True
 		#
 		
