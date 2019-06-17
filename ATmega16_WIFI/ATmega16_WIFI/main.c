@@ -406,7 +406,7 @@ void sendReady()
 
 int main(void)
 {
-	char uglybugly[150];
+	char _buffer[150];
 	uint8_t Connect_Status;
 	#ifdef SEND_DEMO
 	uint8_t Sample = 0;
@@ -478,67 +478,14 @@ int main(void)
 		
 		#ifdef SEND_DEMO
 			
-		///memset(uglybugly, 0, 50);
-		//uglybugly[49] = 0;
+		memset(_buffer, 0, 50);
+		_buffer[49] = 0;
 
-		//sprintf(_buffer, "test test");
-		//ESP8266_Send(_buffer);
-		//_delay_ms(5000);	// Thingspeak server delay 
+		sprintf(_buffer, "test test");
+		ESP8266_Send(_buffer);
+		_delay_ms(5000);	// Thingspeak server delay 
 
 		#endif
 
-		
-		#ifdef STATE_MACHINE
-		
-		//memset(_buffer, 0, 150);
-		
-		int len = 0; //Read_Data(_buffer);
-	
-		if (0 < len)
-		{
-			int command = _buffer[0];
-			
-			switch (command) {
-				case 0x01:  // TEMPO
-					tempo = _buffer[1];
-					break;
-				case 0x02:  // RESET (restart nåværende program)
-					step = 0;
-					break;
-				case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
-					for (int i = 0; i < _buffer[1]; i++) {
-						//   *(rec_program + i) = _buffer[2 + i];
-					}
-					//memcpy(rec_program, &_buffer[2], _buffer[1]);
-					
-					rec_length = _buffer[1];
-					break;
-					/*
-					TODO:
-				case 0x04: // BYTT PROGRAM
-					cur_program = program;
-					program = rec_program;
-					rec_program = cur_program;
-					length = rec_length;
-					
-					step = 0;
-					break;
-					*/
-				default:
-					break;
-			}
-			
-		}
-		else
-		{
-			_delay_ms(600);
-		}
-		
-		//sprintf(_buffer, "GET /channels/%s/feeds/last.txt", CHANNEL_ID);
-		//ESP8266_Send(_buffer);
-		//Read_Data(_buffer);
-		//_delay_ms(600);
-		
-		#endif
 	}
 }

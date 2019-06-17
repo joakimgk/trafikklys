@@ -58,5 +58,6 @@ while True:
                 print("Tempo sendt...")
 
     finally:
+        print('error!!')
         # Clean up the connection
         connection.close()
