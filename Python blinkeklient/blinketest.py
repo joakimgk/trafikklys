@@ -39,22 +39,22 @@ while True:
             data = connection.recv(256)
             #print >>sys.stderr, 'received "%s"' % data
             print("Mottatt data: ", data)
-            if data == "KLAR FOR PROGRAM":
+            if data:
                 print ('Da kjører vi!')
                 break;  # bryt ut av while True
 		#
 		
         input('Tast for å fortsette')      # If you use Python 3
 		
-        tempoSent = false
-        programSent = false
+        tempoSent = False
+        programSent = False
 		
         tempoPakke = '\x01\x01\x32'  # cmd = 1 | len = 1 | payload = 50 (0x32)
         while True:  # simulere UX -- skal ikke motta noe
 		    # send tempo
             if not tempoSent:
-                connection.sendall(tempoPakke)
-                tempoSent = true
+                connection.sendall(tempoPakke.encode())
+                tempoSent = True
                 print("Tempo sendt...")
 
     finally:

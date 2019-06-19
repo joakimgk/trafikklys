@@ -33,10 +33,6 @@
 #define ACCESSPOINT						2
 #define BOTH_STATION_AND_ACCESPOINT		3
 
-/* Select Demo */
-//#define RECEIVE_DEMO				/* Define RECEIVE demo */
-#define SEND_DEMO					/* Define SEND demo */
-
 /* Define Required fields shown below */
 #define DOMAIN				"192.168.43.254"
 #define PORT				"10000"
@@ -363,9 +359,7 @@ int main(void)
 {
 	char _buffer[150];
 	uint8_t Connect_Status;
-	#ifdef SEND_DEMO
 	uint8_t Sample = 0;
-	#endif
 	
 	DDRB = 0xFF; // set PORTB for output
 	PORTB = 0x00; // turn ON all LEDs initially (to indicate ready)
@@ -380,6 +374,8 @@ int main(void)
 	setupTimerISR();
 	sei();									/* Start global interrupt */
 
+	USART_SendString("HEI VELKOMMEN VERDEN");
+	
 	while(!ESP8266_Begin());
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
 	ESP8266_ConnectionMode(SINGLE);			/* 0 = Single; 1 = Multi */
@@ -387,6 +383,10 @@ int main(void)
 	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP)
 	ESP8266_JoinAccessPoint(SSID, PASSWORD);
 	ESP8266_Start(0, DOMAIN, PORT);
+	
+	bool tempoSent = false;
+	char str[150];
+	
 	while(1)
 	{
 		Connect_Status = ESP8266_connected();
@@ -394,20 +394,65 @@ int main(void)
 		ESP8266_JoinAccessPoint(SSID, PASSWORD);
 		if(Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED)
 		ESP8266_Start(0, DOMAIN, PORT);
-
-		#ifdef SEND_DEMO
-		memset(_buffer, 0, 150);
-		sprintf(_buffer, "GET /update?api_key=%s&field1=%d", API_WRITE_KEY, Sample++);
-		ESP8266_Send(_buffer);
-		_delay_ms(15000);	/* Thingspeak server delay */
-		#endif
 		
-		#ifdef RECEIVE_DEMO
-		memset(_buffer, 0, 150);
-		sprintf(_buffer, "GET /channels/%s/feeds/last.txt", CHANNEL_ID);
-		ESP8266_Send(_buffer);
-		Read_Data(_buffer);
+		if (!tempoSent && Sample++ > 5) {
+			memset(_buffer, 0, 150);
+			sprintf(_buffer, "KLAR FOR TEMPO");
+			ESP8266_Send(_buffer);
+			
+			tempoSent = true;
+		}
+		_delay_ms(5000);	/* Thingspeak server delay */
+
+	
+		int len = Read_Data(_buffer);
+		if (len > 0) {
+			
+			USART_SendString(_buffer);
+			
+			if (0 < len)
+			{
+				int command = _buffer[0];
+			
+				switch (command) {
+					case 0x01:  // TEMPO
+USART_SendString("\r\TEMPO\r\n");
+						//memset(str, 0, 150);
+						//sprintf(str, "TEMPO = %u", _buffer[1]);
+						//USART_SendString(str);
+						tempo = _buffer[1];
+						break;
+					case 0x02:  // RESET (restart nåværende program)
+						USART_SendString("\r\RESET\r\n");
+						step = 0;
+						break;
+					case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
+						USART_SendString("\r\PROGRAM\r\n");
+						for (int i = 0; i < _buffer[1]; i++) {
+							//   *(rec_program + i) = _buffer[2 + i];
+						}
+						//memcpy(rec_program, &_buffer[2], _buffer[1]);
+					
+						rec_length = _buffer[1];
+						break;
+						/*
+						TODO:
+					case 0x04: // BYTT PROGRAM
+						cur_program = program;
+						program = rec_program;
+						rec_program = cur_program;
+						length = rec_length;
+					
+						step = 0;
+						break;
+						*/
+					default:
+						break;
+				}
+			
+			}
+		}
 		_delay_ms(600);
-		#endif
+
 	}
 }
