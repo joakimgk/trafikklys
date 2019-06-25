@@ -35,11 +35,9 @@ while True:
         print ('OK')
 		
         while True:
-            print('kødd')
             data = connection.recv(256)
-            #print >>sys.stderr, 'received "%s"' % data
-            print("Mottatt data: ", data)
             if data:
+                print("Mottatt data: ", data)
                 print ('Da kjører vi!')
                 break;  # bryt ut av while True
 		#
@@ -56,6 +54,10 @@ while True:
                 connection.sendall(tempoPakke.encode())
                 tempoSent = True
                 print("Tempo sendt...")
+				
+            data = connection.recv(256)
+            if data:
+                print("Mottatt data: ", data)
 
     finally:
         print('error!!')

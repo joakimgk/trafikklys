@@ -416,17 +416,26 @@ int main(void)
 			ESP8266_Send(_buffer);
 			
 			tempoSent = true;
+			_delay_ms(500);
 		}
-		_delay_ms(5000);	/* Thingspeak server delay */
-
 	
-		int len = Read_Data(_buffer);
-		if (len > 0 && !IsATCommand(_buffer)) {
+		int len = 0;
+		memset(_buffer, 0, 150);
+		len = Read_Data(_buffer);
+		if (len > 0) {   // && !IsATCommand(_buffer)) {
+			
+			PORTB = 0b11111000;
+			
+			_delay_ms(1000);
+			_buffer[len] = 0;
+			ESP8266_Send(_buffer);  // test: send tilbake (echo) til server
+			
+			/*
 			memset(_buffer, 0, 150);
 			sprintf(_buffer, "Mottok %d bytes", len);
 						ESP8266_Send(_buffer);
-
-			//echoTest(_buffer);
+			echoTest(_buffer);
+			*/
 			
 			int command = _buffer[0];
 			
