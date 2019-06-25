@@ -31,7 +31,6 @@ int main(void)
 		int len = 0;
 		sscanf(payload, "%d", &len);	
 	
-	    // hent ut data (våre bytes). TODO: Kunne lese ut N>1 bytes...
 		strncpy(payload, pbuffer_len+1, len);
 		
 		char dKommando = payload[0];
