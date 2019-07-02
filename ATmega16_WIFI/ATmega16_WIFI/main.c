@@ -321,18 +321,6 @@ uint16_t Read_Data(char* _buffer)
 	return len;
 }
 
-ISR (USART_RXC_vect)
-{
-	uint8_t oldsrg = SREG;
-	cli();
-	RESPONSE_BUFFER[Counter] = UDR;
-	Counter++;
-	if(Counter == DEFAULT_BUFFER_SIZE){
-		Counter = 0; pointer = 0;
-	}
-	SREG = oldsrg;
-}
-
 # define BUFFER_LENGTH 125
 # define SLOW 20000
 # define RAPID 5000
@@ -348,6 +336,54 @@ volatile int rec_length = 0;
 volatile int step = 0;
 // playback delay (ms)
 volatile int tempo = RAPID;
+
+void handlePayload(char command, int len, char* payload) {
+	switch (command) {
+		case 0x01:  // TEMPO
+			tempo = (int)payload[1];
+			break;
+		case 0x02:  // RESET (restart nåværende program)
+			step = 0;
+			break;
+			/*
+		case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
+			for (int i = 0; i < len; i++) {
+				//   *(rec_program + i) = _buffer[2 + i];
+			}
+			//memcpy(rec_program, &_buffer[2], _buffer[1]);
+					
+			rec_length = _buffer[1];
+			break;
+			*/
+			/*
+			TODO:
+		case 0x04: // BYTT PROGRAM
+			cur_program = program;
+			program = rec_program;
+			rec_program = cur_program;
+			length = rec_length;
+					
+			step = 0;
+			break;
+			*/
+		default:
+			break;
+	}
+}
+
+ISR (USART_RXC_vect)
+{
+	uint8_t oldsrg = SREG;
+	cli();
+	RESPONSE_BUFFER[Counter] = UDR;
+	Counter++;
+	if(Counter == DEFAULT_BUFFER_SIZE){
+		Counter = 0; pointer = 0;
+	}
+	SREG = oldsrg;
+}
+
+
 
 ISR (TIMER1_OVF_vect)    // Timer1 ISR
 {
@@ -383,7 +419,7 @@ int main(void)
 	step = 0;
 	
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
-	setupTimerISR();
+	//setupTimerISR();
 	sei();									/* Start global interrupt */
 
 	USART_SendString("HEI VELKOMMEN VERDEN");
@@ -398,18 +434,19 @@ int main(void)
 	
 	
 	PORTB = 0xFF; // All leds off
-	
-	bool tempoSent = false;
-	char str[150];
+	char payload[10];
 	
 	while(1)
 	{
+		/*
 		Connect_Status = ESP8266_connected();
 		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP)
 		ESP8266_JoinAccessPoint(SSID, PASSWORD);
 		if(Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED)
 		ESP8266_Start(0, DOMAIN, PORT);
+		*/
 		
+		/*
 		if (!tempoSent && Sample++ > 5) {
 			memset(_buffer, 0, 150);
 			sprintf(_buffer, "KLAR FOR TEMPO");
@@ -418,63 +455,42 @@ int main(void)
 			tempoSent = true;
 			_delay_ms(500);
 		}
+		*/
 	
 		int len = 0;
 		memset(_buffer, 0, 150);
 		len = Read_Data(_buffer);
-		if (len > 0) {   // && !IsATCommand(_buffer)) {
+		
+		char * pbuffer_cmd = strstr(_buffer, "+IPD");
+		if (len > 0 && pbuffer_cmd != NULL) {
 			
-			PORTB = 0b11111000;
-			
-			_delay_ms(1000);
-			_buffer[len] = 0;
-			ESP8266_Send(_buffer);  // test: send tilbake (echo) til server
-			
-			/*
-			memset(_buffer, 0, 150);
-			sprintf(_buffer, "Mottok %d bytes", len);
-						ESP8266_Send(_buffer);
-			echoTest(_buffer);
-			*/
-			
-			int command = _buffer[0];
-			
-			switch (command) {
-				case 0x01:  // TEMPO
+			PORTB = 0b00111111;
 
-					USART_SendString("\r\nTEMPO\r\n");
-					echoTest(_buffer);
-					tempo = _buffer[1];
-					break;
-				case 0x02:  // RESET (restart nåværende program)
-					USART_SendString("\r\nRESET\r\n");
-					step = 0;
-					break;
-				case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
-					USART_SendString("\r\nPROGRAM\r\n");
-					for (int i = 0; i < _buffer[1]; i++) {
-						//   *(rec_program + i) = _buffer[2 + i];
-					}
-					//memcpy(rec_program, &_buffer[2], _buffer[1]);
-					
-					rec_length = _buffer[1];
-					break;
-					/*
-					TODO:
-				case 0x04: // BYTT PROGRAM
-					cur_program = program;
-					program = rec_program;
-					rec_program = cur_program;
-					length = rec_length;
-					
-					step = 0;
-					break;
-					*/
-				default:
-					break;
+			while (pbuffer_cmd != NULL) {
+
+				char *pbuffer_len = strstr(pbuffer_cmd, ":");
+
+				int startpos = (int)(pbuffer_cmd - _buffer);
+				int endpos = (int)(pbuffer_len - _buffer);
+
+				// hent ut lengde av pakke (IPD)
+				strncpy(payload, pbuffer_len-1, endpos-(startpos+5));
+				int len = 0;
+				sscanf(payload, "%d", &len);
+
+				strncpy(payload, pbuffer_len+1, len);
+
+				char dKommando = payload[0];
+				int dLengde = payload[1] - '0';
+				strncpy(payload, pbuffer_len+1 +2, dLengde);
+				payload[dLengde] = 0;
+				
+				PORTB ^= ~dKommando;
+				handlePayload(dKommando, dLengde, payload);
+
+				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 			}
 			
-
 		}
 		_delay_ms(600);
 
