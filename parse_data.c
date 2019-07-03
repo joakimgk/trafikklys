@@ -2,16 +2,57 @@
 #include <stdio.h>					/* Include standard IO library */
 #include <stdlib.h>	/* Include standard library */
 
+void printBits(char a) {
+    int i;
+    for (i = 0; i < 8; i++) {
+      printf("%d", !!((a << i) & 0x80));
+    }
+    printf("\n");
+}
+
+void handlePayload(char command, int len, char* payload) {
+    switch (command) {
+        case 0x01:
+            printf("\033[33mEndre TEMPO til %c\033[0m\n", payload[0]);
+            break;
+            
+        case 0x02:
+            printf("\033[33mRESTART program\033[0m\n");
+            break;
+            
+		case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
+			printf("\033[33mLast inn nytt PROGRAM (%d bytes)\033[0m\n", len);
+			for (int i = 0; i < len; i++) {
+				printBits(payload[i]);
+			}
+			break;
+
+/*
+		case 0x04: // BYTT PROGRAM
+			cur_program = program;
+			program = rec_program;
+			rec_program = cur_program;
+			length = rec_length;
+			
+			step = 0;
+			break;
+*/
+        default:
+            break;
+    }
+}
+
 int main(void)
 {
 	char _buffer[150];
 	char * pbuffer_cmd;
-	char payload[10];
+	unsigned char payload[10];
 	
-	printf("Parse datapakke:\n\n");
+	printf("Parse datapakke:\n");
+	unsigned char nyttProgram[8] = {0x3F,0x9F,0xCF,0xE7,0xF3,0xF9,0xFC, 0};
 	
 	memset(_buffer, 0, 150);
-	sprintf(_buffer, "\r\nRecv 30 bytes\r\n+IPD,5:%u%uABC\r\nSEND OK\r\n\r\n+IPD,3:%u%u2\r\n", 0x02, 0x03, 0x01, 0x01);
+	sprintf(_buffer, "\r\nRecv 30 bytes\r\n+IPD,5:%u%u%s\r\nSEND OK\r\n\r\n+IPD,3:%u%u2\r\n", 0x03, 0x07, nyttProgram, 0x01, 0x01);
 	pbuffer_cmd = _buffer;
 	int t = 1;
 	while (1)
@@ -33,14 +74,14 @@ int main(void)
 	
 		strncpy(payload, pbuffer_len+1, len);
 		
-		char dKommando = payload[0];
+		char dKommando = payload[0] - '0';
 		int dLengde = payload[1] - '0';
 		strncpy(payload, pbuffer_len+1 +2, dLengde);
 		payload[dLengde] = 0;
 		
 		printf("\nPakke %d:\n\tKommando: %u\n\tLengde: %d\n\tPayload: %s\n", t++, dKommando, dLengde, payload);
 	
-		//handlePayload(dKommando, dLengde, payload);
+		handlePayload(dKommando, dLengde, payload);
 		pbuffer_cmd = pbuffer_len;
 	}
 	
