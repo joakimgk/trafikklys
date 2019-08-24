@@ -327,6 +327,7 @@ uint16_t Read_Data(char* _buffer)
 
 // program buffers
 volatile unsigned char program[BUFFER_LENGTH];
+volatile unsigned char rec_program[BUFFER_LENGTH];
 
 // length of current program
 volatile int length = 0;
@@ -337,35 +338,33 @@ volatile int step = 0;
 // playback delay (ms)
 volatile int tempo = RAPID;
 
+void swapArrays(char **a, char **b){
+	char *temp = *a;
+	*a = *b;
+	*b = temp;
+}
+
 void handlePayload(char command, int len, char* payload) {
 	switch (command) {
 		case 0x01:  // TEMPO
 			tempo = (int)payload[1];
 			break;
-		case 0x02:  // RESET (restart n�v�rende program)
+			
+		case 0x02:  // RESET (restart nåværende program)
 			step = 0;
 			break;
-			/*
-		case 0x03:  // MOTTA PROGRAM  (dump _buffer inn i *program)
-			for (int i = 0; i < len; i++) {
-				//   *(rec_program + i) = _buffer[2 + i];
-			}
-			//memcpy(rec_program, &_buffer[2], _buffer[1]);
-					
-			rec_length = _buffer[1];
+	
+		case 0x03:  // MOTTA PROGRAM  (dump payload inn i *rec_program)
+			memcpy(rec_program, payload, len);	
+			rec_length = len;
 			break;
-			*/
-			/*
-			TODO:
-		case 0x04: // BYTT PROGRAM
-			cur_program = program;
-			program = rec_program;
-			rec_program = cur_program;
+		
+		case 0x04: // BYTT PROGRAM (bytt om referanser og bruk av *program og *rec_program)
+			swapArrays(program, rec_program);
 			length = rec_length;
-					
-			step = 0;
+			step = 0;  // og RESET!
 			break;
-			*/
+			
 		default:
 			break;
 	}
@@ -410,7 +409,7 @@ int main(void)
 	uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
-	PORTB = 0b11111110; // crash indicator
+	PORTB = 0b01111111; // crash indicator (LED 7)
 	
 	// create an initial program to keep the loop busy until first program is received (and started)
 	program[0] = 0xFF;
@@ -464,7 +463,7 @@ int main(void)
 		char * pbuffer_cmd = strstr(_buffer, "+IPD");
 		if (len > 0 && pbuffer_cmd != NULL) {
 			
-			PORTB = 0b00111111;
+			//PORTB = 0b00111111;
 
 			while (pbuffer_cmd != NULL) {
 
@@ -476,17 +475,19 @@ int main(void)
 				// hent ut lengde av pakke (IPD)
 				strncpy(payload, pbuffer_len-1, endpos-(startpos+5));
 				int len = 0;
+				
 				sscanf(payload, "%d", &len);
-
 				strncpy(payload, pbuffer_len+1, len);
-
-				char dKommando = payload[0];
-				int dLengde = payload[1] - '0';
+				
+				unsigned int dKommando = payload[0];
+				unsigned int dLengde = payload[1];
+				
+				// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
 				strncpy(payload, pbuffer_len+1 +2, dLengde);
 				payload[dLengde] = 0;
 				
-				PORTB ^= ~dKommando;
-				handlePayload(dKommando, dLengde, payload);
+				PORTB = dKommando; // (0xFF ^ dKommando);
+				//handlePayload(dKommando, dLengde, payload);
 
 				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 			}
