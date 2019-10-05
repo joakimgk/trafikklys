@@ -322,12 +322,12 @@ uint16_t Read_Data(char* _buffer)
 }
 
 # define BUFFER_LENGTH 125
-# define SLOW 20000
-# define RAPID 5000
+# define SLOW 3
+# define RAPID 5
 
 // program buffers
-volatile unsigned char program[BUFFER_LENGTH];
-volatile unsigned char rec_program[BUFFER_LENGTH];
+volatile uint8_t program[BUFFER_LENGTH];
+volatile uint8_t rec_program[BUFFER_LENGTH];
 
 // length of current program
 volatile int length = 0;
@@ -336,7 +336,7 @@ volatile int rec_length = 0;
 // playback position
 volatile int step = 0;
 // playback delay (ms)
-volatile int tempo = RAPID;
+volatile uint16_t tempo = 2;
 
 void swapArrays(char **a, char **b){
 	char *temp = *a;
@@ -344,10 +344,31 @@ void swapArrays(char **a, char **b){
 	*b = temp;
 }
 
-void handlePayload(char command, int len, char* payload) {
+uint8_t tempos[5] = {
+	10000,
+	20000,
+	30000,
+	40000,
+	50000
+};
+
+void handlePayload(char command, int len, char payload[]) {
+	uint8_t i;
 	switch (command) {
 		case 0x01:  // TEMPO
-			tempo = (int)payload[1];
+		/*
+			i = payload[1];
+		
+		
+			char smthing[150];
+			memset(smthing, 0, 150);
+			sprintf(smthing, "tempo=%d", i);
+			USART_SendString(smthing);
+			*/
+			/*if (i >= 0 && i < 5) {
+				OCR1A = tempos[i];
+			}*/
+			//OCR1A = i;
 			break;
 			
 		case 0x02:  // RESET (restart nåværende program)
@@ -383,23 +404,22 @@ ISR (USART_RXC_vect)
 }
 
 
-
-ISR (TIMER1_OVF_vect)    // Timer1 ISR
+ISR (TIMER1_COMPA_vect)
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
 	PORTB = program[step++];  // *(program + step++);
-
-	TCNT1 = tempo;   // for 1 sec at 16 MHz
 }
 
 void setupTimerISR()
 {
-	TCNT1 = tempo;   // for 1 sec at 16 MHz
-
-	TCCR1A = 0x00;
-	TCCR1B = (1<<CS10) | (1<<CS12);;  // Timer mode with 1024 prescaler
-	TIMSK = (1 << TOIE1) ;   // Enable timer1 overflow interrupt(TOIE1)
+	TCCR1A = 0; // Reset control registers timer1 /not needed, safety
+	TCCR1B = 0; // Reset control registers timer1 // not needed, safety
+	TIMSK |= (1 << OCIE1A); // | (1 << TOIE1); //timer1 output compare match and overflow interrupt enable
+	OCR1A = 50000; // Set TOP/compared value (your value) (maximum is 65535 i think)
+	TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
+	TCNT1 = 0;
+	//TCCR1A |= (1 << OCR1A);  //set OCR1A on compare match (output high level level)
 }
 
 int main(void)
@@ -412,13 +432,23 @@ int main(void)
 	PORTB = 0b01111111; // crash indicator (LED 7)
 	
 	// create an initial program to keep the loop busy until first program is received (and started)
-	program[0] = 0xFF;
-	program[1] = 0x00;
-	length = 2;
+	program[0] = 0b01111111;
+	program[1] = 0b10111111;
+	program[2] = 0b11011111;
+	program[3] = 0b11101111;
+	program[4] = 0b11110111;
+	program[5] = 0b11111011;
+	program[6] = 0b11111101;
+	program[7] = 0b01111110;
+
+	length = 8;
 	step = 0;
 	
-	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
+	cli();
 	//setupTimerISR();
+
+	
+	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
 	sei();									/* Start global interrupt */
 
 	USART_SendString("HEI VELKOMMEN VERDEN");
@@ -433,7 +463,7 @@ int main(void)
 	
 	
 	PORTB = 0xFF; // All leds off
-	char payload[10];
+	unsigned char payload[10];
 	
 	while(1)
 	{
@@ -486,7 +516,9 @@ int main(void)
 				strncpy(payload, pbuffer_len+1 +2, dLengde);
 				payload[dLengde] = 0;
 				
-				PORTB = dKommando; // (0xFF ^ dKommando);
+				unsigned int ttt = payload[0];
+				
+				PORTB = ttt; // (0xFF ^ dKommando);
 				//handlePayload(dKommando, dLengde, payload);
 
 				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
