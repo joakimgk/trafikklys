@@ -445,7 +445,7 @@ int main(void)
 	step = 0;
 	
 	cli();
-	//setupTimerISR();
+	setupTimerISR();
 
 	
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
