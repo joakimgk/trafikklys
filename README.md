@@ -13,6 +13,7 @@ The controller unit consists of a microcontroller which emits a signal to contro
 
 The driver unit is connected physically (via serial cable) to the controller unit, and -- since the lights happen to be traffic lights -- connects to 3 bits of the emitted signal. An optoisolator insulates the TTL logic of the received signal from the mains voltage side of the driver unit, where the mains voltage is toggled on/off using a triac. This allows an extremely fast rate of switching the lights, at least using (now obsolete) incandecent bulbs. I am a bit anticipatory of how well (fast) this will work using modern LED bulbs.
 
+![Schematic](img/styring.png)
 ![Driver](http://www.ii.uib.no/~joakimk/temp/driver.jpg) 
 
 ## Version 2
