@@ -1,6 +1,6 @@
 # Lights Controller (Light Organ)
 
-This project is about controlling lights (ordinary mains light bulbs) as a "light organ". For my specific use case, the lights in question are old traffic lights, containing three E24 light bulb sockets. The project is split into two parts; a controller unit, and a driver unit. 
+This project is about controlling lights (ordinary 40W light bulbs) as a "light organ". For my specific use case, the lights in question are old traffic lights, containing three E27 light bulb sockets. The project is split into two parts; a controller unit, and a driver unit. 
 
 ![](img/DSC_0932.jpg) 
 
