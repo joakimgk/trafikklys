@@ -24,42 +24,23 @@ while True:
     connection, client_address = sock.accept()
 
     try:
+
         #print >>sys.stderr, 'connection from', client_address
         print ("Connection from ", client_address)
         # Receive the data in small chunks and retransmit it
-		
-		# vent på "KLAR FOR PROGRAM"
-		# send tempo
-		# (send nytt program)
-		
-        print ('OK')
-		
+			
         while True:
-            data = connection.recv(256)
-            if data:
-                print("Mottatt data: ", data)
-                print ('Da kjører vi!')
-                break;  # bryt ut av while True
-		#
-		
-        input('Tast for å fortsette')      # If you use Python 3
-		
-        tempoSent = False
-        programSent = False
-		
-        tempoPakke = '\x01\x01\x32'  # cmd = 1 | len = 1 | payload = 50 (0x32)
-        while True:  # simulere UX -- skal ikke motta noe
-		    # send tempo
-            if not tempoSent:
-                connection.sendall(tempoPakke.encode())
-                tempoSent = True
-                print("Tempo sendt...")
-				
-            data = connection.recv(256)
-            if data:
-                print("Mottatt data: ", data)
+	     	
+            g = input("Tast tempo: ");
+            data = [1, 1, int(g)]
+            Pakke = bytes(data)
+
+            connection.sendall(Pakke)
+            print("Tempo sendt")
 
     finally:
         print('error!!')
         # Clean up the connection
         connection.close()
+
+
