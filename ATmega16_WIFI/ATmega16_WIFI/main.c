@@ -344,31 +344,12 @@ void swapArrays(char **a, char **b){
 	*b = temp;
 }
 
-uint8_t tempos[5] = {
-	10000,
-	20000,
-	30000,
-	40000,
-	50000
-};
-
 void handlePayload(char command, int len, char payload[]) {
-	uint8_t i;
+
 	switch (command) {
 		case 0x01:  // TEMPO
-		/*
-			i = payload[1];
-		
-		
-			char smthing[150];
-			memset(smthing, 0, 150);
-			sprintf(smthing, "tempo=%d", i);
-			USART_SendString(smthing);
-			*/
-			/*if (i >= 0 && i < 5) {
-				OCR1A = tempos[i];
-			}*/
-			//OCR1A = i;
+			//OCR1AH = payload[0];  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
+			OCR1A = 32768 + (payload[0] + 1) * 128 -1; //256;
 			break;
 			
 		case 0x02:  // RESET (restart nåværende program)
@@ -389,6 +370,7 @@ void handlePayload(char command, int len, char payload[]) {
 		default:
 			break;
 	}
+
 }
 
 ISR (USART_RXC_vect)
@@ -403,23 +385,24 @@ ISR (USART_RXC_vect)
 	SREG = oldsrg;
 }
 
-
 ISR (TIMER1_COMPA_vect)
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
-	
 	PORTB = program[step++];  // *(program + step++);
 }
 
 void setupTimerISR()
 {
+	cli();
 	TCCR1A = 0; // Reset control registers timer1 /not needed, safety
 	TCCR1B = 0; // Reset control registers timer1 // not needed, safety
 	TIMSK |= (1 << OCIE1A); // | (1 << TOIE1); //timer1 output compare match and overflow interrupt enable
-	OCR1A = 50000; // Set TOP/compared value (your value) (maximum is 65535 i think)
-	TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
+	OCR1A = 12000; // Set TOP/compared value (your value) (maximum is 65535 i think)
 	TCNT1 = 0;
-	//TCCR1A |= (1 << OCR1A);  //set OCR1A on compare match (output high level level)
+	TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
+	//TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
+	//TCCR1B |= (1 << WGM12)|(1 << CS10)|(1 << CS12);  // prescaling=1024 CTC-mode (two counts per microsecond)
+	sei();
 }
 
 int main(void)
@@ -485,6 +468,7 @@ int main(void)
 			_delay_ms(500);
 		}
 		*/
+		
 	
 		int len = 0;
 		memset(_buffer, 0, 150);
@@ -492,8 +476,6 @@ int main(void)
 		
 		char * pbuffer_cmd = strstr(_buffer, "+IPD");
 		if (len > 0 && pbuffer_cmd != NULL) {
-			
-			//PORTB = 0b00111111;
 
 			while (pbuffer_cmd != NULL) {
 
@@ -516,16 +498,12 @@ int main(void)
 				strncpy(payload, pbuffer_len+1 +2, dLengde);
 				payload[dLengde] = 0;
 				
-				unsigned int ttt = payload[0];
+				handlePayload(dKommando, dLengde, payload);
 				
-				PORTB = ttt; // (0xFF ^ dKommando);
-				//handlePayload(dKommando, dLengde, payload);
-
 				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 			}
 			
 		}
-		_delay_ms(600);
 
 	}
 }
