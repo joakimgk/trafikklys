@@ -23,7 +23,7 @@ The driver unit is connected physically (via serial cable) to the controller uni
 
 In the updated version of this project, I'm working towards splitting the controller unit into two parts; a mobile app, and (several) wireless receiver units -- one per light unit (traffic light). The receiver unit will consist of an ESP8266 wifi unit (to receive data) and an ATMEGA16 microcontroller (to communicate with the driver unit, as before). The new receiver is designed such as to store the current "program" (bytes to blink) in memory, as well as a frequency of which to blink. A timer (the 16-bit Timer1 in CTC mode) is used to step the program and emit the current byte.
 
-The mobile app will replace the handheld controller, in communicating the current "program" (blinking pattern) and tempo. The mobile app will have to be on the same network as the receiver/driver units, and communications will be over TCP/IP (UDP). A protocol is designed such that the app may broadcast different information to the receivers:
+The mobile app will replace the handheld controller, in communicating the current "program" (blinking pattern) and tempo. The mobile app will have to be on the same network as the receiver/driver units, and communications will be over TCP/IP. A protocol is designed such that the app may transmit different information to the receivers:
 
 - the program to emit (a series of bytes, which will be buffered in memory)
 - a `RESET` command (which copies the receive buffer into the program buffer)
