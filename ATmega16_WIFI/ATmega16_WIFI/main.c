@@ -34,7 +34,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.43.254"
+#define DOMAIN				"192.168.43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -338,14 +338,17 @@ volatile int step = 0;
 // playback delay (ms)
 volatile uint16_t tempo = 2;
 
-void swapArrays(char **a, char **b){
-	char *temp = *a;
+void swapArrays(uint8_t **a, uint8_t **b){
+	uint8_t *temp = *a;
 	*a = *b;
 	*b = temp;
 }
 
 void handlePayload(char command, int len, char payload[]) {
+	
+	PORTB = (~command);
 
+	int i;
 	switch (command) {
 		case 0x01:  // TEMPO
 			//OCR1AH = payload[0];  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
@@ -362,7 +365,10 @@ void handlePayload(char command, int len, char payload[]) {
 			break;
 		
 		case 0x04: // BYTT PROGRAM (bytt om referanser og bruk av *program og *rec_program)
-			swapArrays(program, rec_program);
+			//swapArrays(program, rec_program);
+			for (i = 0; i < rec_length; i++) {
+				program[i] = rec_program[i];
+			}
 			length = rec_length;
 			step = 0;  // og RESET!
 			break;
@@ -374,10 +380,10 @@ void handlePayload(char command, int len, char payload[]) {
 }
 
 ISR (USART_RXC_vect)
-{
+{ 
 	uint8_t oldsrg = SREG;
 	cli();
-	RESPONSE_BUFFER[Counter] = UDR;
+	RESPONSE_BUFFER[Counter] = UDR0;
 	Counter++;
 	if(Counter == DEFAULT_BUFFER_SIZE){
 		Counter = 0; pointer = 0;
@@ -388,7 +394,9 @@ ISR (USART_RXC_vect)
 ISR (TIMER1_COMPA_vect)
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
-	PORTB = program[step++];  // *(program + step++);
+	
+	uint8_t mem = (~PORTB & 0b00011111);
+	PORTB = (~(program[step++] | mem));  // *(program + step++);
 }
 
 void setupTimerISR()
@@ -396,8 +404,8 @@ void setupTimerISR()
 	cli();
 	TCCR1A = 0; // Reset control registers timer1 /not needed, safety
 	TCCR1B = 0; // Reset control registers timer1 // not needed, safety
-	TIMSK |= (1 << OCIE1A); // | (1 << TOIE1); //timer1 output compare match and overflow interrupt enable
-	OCR1A = 12000; // Set TOP/compared value (your value) (maximum is 65535 i think)
+	TIMSK1 |= (1 << OCIE1A); // | (1 << TOIE1); //timer1 output compare match and overflow interrupt enable
+	OCR1A = 40000; // Set TOP/compared value (your value) (maximum is 65535 i think)
 	TCNT1 = 0;
 	TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
 	//TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
@@ -415,20 +423,16 @@ int main(void)
 	PORTB = 0b01111111; // crash indicator (LED 7)
 	
 	// create an initial program to keep the loop busy until first program is received (and started)
-	program[0] = 0b01111111;
-	program[1] = 0b10111111;
-	program[2] = 0b11011111;
-	program[3] = 0b11101111;
-	program[4] = 0b11110111;
-	program[5] = 0b11111011;
-	program[6] = 0b11111101;
-	program[7] = 0b01111110;
+	program[0] = 0b10000000;
+	program[1] = 0b01000000;
+	program[2] = 0b00100000;
+	program[3] = 0b01000000;
 
-	length = 8;
+	length = 4;
 	step = 0;
 	
 	cli();
-	setupTimerISR();
+	//setupTimerISR();
 
 	
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
@@ -447,6 +451,7 @@ int main(void)
 	
 	PORTB = 0xFF; // All leds off
 	unsigned char payload[10];
+	PORTB = (~3);
 	
 	while(1)
 	{
