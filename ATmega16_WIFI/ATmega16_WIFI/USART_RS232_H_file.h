@@ -12,7 +12,7 @@
 #include <avr/io.h>							/* Include AVR std. library file */
 #include <math.h>
 
-#define DOUBLE_SPEED_MODE
+//#define DOUBLE_SPEED_MODE
 
 #ifdef DOUBLE_SPEED_MODE
 	#define BAUD_PRESCALE (int)round(((((double)F_CPU / ((double)BAUDRATE * 8.0))) - 1.0))	/* Define prescale value */
