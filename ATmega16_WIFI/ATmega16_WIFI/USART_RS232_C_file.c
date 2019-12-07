@@ -12,7 +12,7 @@ void USART_Init(unsigned long BAUDRATE)				/* USART initialize function */
 	UCSR0A |=(1 << U2X0);
 #endif
 	UCSR0B |= (1 << RXEN0) | (1 << TXEN0) | (1 << RXCIE0);	/* Enable USART transmitter and receiver */
-	UCSR0C |= (1 << UCSZ00) | (1 << UCSZ01);	/* Write USCRC for 8 bit data and 1 stop bit */ 
+	UCSR0C |= (1 << UMSEL00)| (1 << UCSZ00) | (1 << UCSZ01);	/* Write USCRC for 8 bit data and 1 stop bit */ 
 	UBRR0L = BAUD_PRESCALE;							/* Load UBRRL with lower 8 bit of prescale value */
 	UBRR0H = (BAUD_PRESCALE >> 8);					/* Load UBRRH with upper 8 bit of prescale value */
 }
