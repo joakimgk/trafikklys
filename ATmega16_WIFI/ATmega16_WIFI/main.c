@@ -433,14 +433,17 @@ int main(void)
 	
 	cli();
 	//setupTimerISR();
-
+	PORTB = 0b11111100; // status indicator (LED 1)
 	
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
 	sei();									/* Start global interrupt */
 
 	USART_SendString("HEI VELKOMMEN VERDEN");
+
+	PORTB = 0b11111000; // status indicator (LED 2)
 	
 	while(!ESP8266_Begin());
+	PORTB = 0b11110000; // status indicator (LED 3)
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
 	ESP8266_ConnectionMode(SINGLE);			/* 0 = Single; 1 = Multi */
 	ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
