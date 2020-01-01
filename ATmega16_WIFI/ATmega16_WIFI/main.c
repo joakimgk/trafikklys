@@ -346,7 +346,7 @@ void swapArrays(uint8_t **a, uint8_t **b){
 
 void handlePayload(char command, int len, char payload[]) {
 	
-	PORTB = (~command);
+	PORTB = (~(command << 3));
 
 	int i;
 	switch (command) {
@@ -450,7 +450,6 @@ int main(void)
 	
 	PORTB = 0xFF; // All leds off
 	unsigned char payload[10];
-	PORTB = (~3);
 	
 	while(1)
 	{
