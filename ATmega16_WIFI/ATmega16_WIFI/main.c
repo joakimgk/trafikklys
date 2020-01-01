@@ -395,7 +395,7 @@ ISR (TIMER1_COMPA_vect)
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
-	uint8_t mem = (~PORTB & 0b00011111);
+	uint8_t mem = (~PORTB & 0b11111000);
 	PORTB = (~(program[step++] | mem));  // *(program + step++);
 }
 
@@ -420,13 +420,13 @@ int main(void)
 	uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
-	PORTB = 0b11111110; // crash indicator (LED 0)
+	PORTB = 0b11111011; // crash indicator (LED 5)
 	
 	// create an initial program to keep the loop busy until first program is received (and started)
-	program[0] = 0b10000000;
-	program[1] = 0b01000000;
-	program[2] = 0b00100000;
-	program[3] = 0b01000000;
+	program[0] = 0b00000100;
+	program[1] = 0b00000010;
+	program[2] = 0b00000001;
+	program[3] = 0b00000010;
 
 	length = 4;
 	step = 0;
