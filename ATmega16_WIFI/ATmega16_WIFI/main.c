@@ -1,11 +1,11 @@
 /*
-* ATmega88_WIFI
+* ATmega16_WIFI
 * http://www.electronicwings.com
 *
 */
 
 
-#define F_CPU 8000000UL			/* Define CPU Frequency e.g. here its Ext. 12MHz */
+#define F_CPU 3686400UL			/* Define CPU Frequency e.g. here its Ext. 12MHz */
 #include <avr/io.h>					/* Include AVR std. library file */
 #include <util/delay.h>				/* Include Delay header file */
 #include <stdbool.h>				/* Include standard boolean library */
@@ -379,7 +379,7 @@ void handlePayload(char command, int len, char payload[]) {
 
 }
 
-ISR (USART_RXC_vect)
+ISR (USART_RX_vect, ISR_BLOCK )
 { 
 	uint8_t oldsrg = SREG;
 	cli();
@@ -387,7 +387,7 @@ ISR (USART_RXC_vect)
 	Counter++;
 	if(Counter == DEFAULT_BUFFER_SIZE){
 		Counter = 0; pointer = 0;
-	}
+	}	
 	SREG = oldsrg;
 }
 
@@ -432,18 +432,14 @@ int main(void)
 	step = 0;
 	
 	cli();
-	//setupTimerISR();
-	PORTB = 0b11111100; // status indicator (LED 1)
+	setupTimerISR();
 	
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
 	sei();									/* Start global interrupt */
 
 	USART_SendString("HEI VELKOMMEN VERDEN");
-
-	PORTB = 0b11111000; // status indicator (LED 2)
 	
 	while(!ESP8266_Begin());
-	PORTB = 0b11110000; // status indicator (LED 3)
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
 	ESP8266_ConnectionMode(SINGLE);			/* 0 = Single; 1 = Multi */
 	ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
