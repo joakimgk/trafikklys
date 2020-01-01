@@ -420,7 +420,7 @@ int main(void)
 	uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
-	PORTB = 0b11111011; // crash indicator (LED 5)
+	PORTB = 0b11011111; // crash indicator (LED 5)
 	
 	// create an initial program to keep the loop busy until first program is received (and started)
 	program[0] = 0b00000100;
