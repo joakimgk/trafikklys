@@ -8,16 +8,16 @@
 #ifndef USART_RS232_H_FILE_H_				/* Define library H file if not defined */
 #define USART_RS232_H_FILE_H_
 
-#define F_CPU 8000000UL					/* Define CPU clock Frequency e.g. here its 12MHz */
+#define F_CPU 3686400UL					/* Define CPU clock Frequency e.g. here its 12MHz */
 #include <avr/io.h>							/* Include AVR std. library file */
 #include <math.h>
 
-#define DOUBLE_SPEED_MODE
+//#define DOUBLE_SPEED_MODE
 
 #ifdef DOUBLE_SPEED_MODE
-	#define BAUD_PRESCALE (int)round(((((double)F_CPU / ((double)BAUDRATE * 8.0))) - 1.0))	/* Define prescale value */
+	#define BAUD_PRESCALE (int)round(((((double)F_CPU / ((double)BAUDRATE * 8UL))) - 1UL))	/* Define prescale value */
 #else
-	#define BAUD_PRESCALE (int)round(((((double)F_CPU / ((double)BAUDRATE * 16.0))) - 1.0))	/* Define prescale value */
+	#define BAUD_PRESCALE (int)round(((((double)F_CPU / ((double)BAUDRATE * 16UL))) - 1UL))	/* Define prescale value */
 #endif
 
 void USART_Init(unsigned long);				/* USART initialize function */
