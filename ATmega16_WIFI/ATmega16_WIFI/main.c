@@ -351,8 +351,13 @@ void handlePayload(char command, int len, char payload[]) {
 	int i;
 	switch (command) {
 		case 0x01:  // TEMPO
-			//OCR1AH = payload[0];  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
-			OCR1A = 32768 + (payload[0] + 1) * 128 -1; //256;
+			//OCR1AH = (payload[0]+1);  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
+			tempo = 576 + (payload[0] +1) * 223;
+			OCR1A = tempo;
+			
+			if (tempo < 576) tempo = 576;
+			else if (tempo > 57600) tempo = 57600;
+			
 			break;
 			
 		case 0x02:  // RESET (restart nåværende program)
@@ -395,6 +400,9 @@ ISR (TIMER1_COMPA_vect)
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
+	// always change tempo at same "time"  (just as the CTC counter maxes out)
+	//OCR1A = tempo;
+	
 	uint8_t mem = (~PORTB & 0b11111000);
 	PORTB = (~(program[step++] | mem));  // *(program + step++);
 }
@@ -405,10 +413,11 @@ void setupTimerISR()
 	TCCR1A = 0; // Reset control registers timer1 /not needed, safety
 	TCCR1B = 0; // Reset control registers timer1 // not needed, safety
 	TIMSK1 |= (1 << OCIE1A); // | (1 << TOIE1); //timer1 output compare match and overflow interrupt enable
-	OCR1A = 40000; // Set TOP/compared value (your value) (maximum is 65535 i think)
+	OCR1A = 57600; // Set TOP/compared value (your value) (maximum is 65535 i think)
 	TCNT1 = 0;
-	TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
-	//TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
+	//TCCR1B |= (1 << WGM12)|(1 << CS00);  // NO PRESCALING??
+	//TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
+	TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
 	//TCCR1B |= (1 << WGM12)|(1 << CS10)|(1 << CS12);  // prescaling=1024 CTC-mode (two counts per microsecond)
 	sei();
 }
@@ -422,13 +431,19 @@ int main(void)
 	DDRB = 0xFF; // set PORTB for output
 	PORTB = 0b11011111; // crash indicator (LED 5)
 	
+	/*
 	// create an initial program to keep the loop busy until first program is received (and started)
 	program[0] = 0b00000100;
 	program[1] = 0b00000010;
 	program[2] = 0b00000001;
 	program[3] = 0b00000010;
-
 	length = 4;
+	*/
+	
+	program[0] = 0b00000111;
+	program[1] = 0b00000000;
+	length = 2;
+	
 	step = 0;
 	
 	cli();
