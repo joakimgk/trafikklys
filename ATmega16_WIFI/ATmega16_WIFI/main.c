@@ -354,16 +354,20 @@ void handlePayload(char command, int len, char payload[]) {
 		case 0x01:  // TEMPO
 			//OCR1AH = (payload[0]+1);  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
 			tempo = 576 + (payload[0] +1) * 223;
-			OCR1A = tempo;
-			
+
+			/*
 			char tempoReceipt[60];
 			memset(tempoReceipt, 0, 60);
 			sprintf(tempoReceipt, "Tempo=%d", (payload[0] +1));
 			tempoReceipt[59] = 0;
 			USART_SendString(tempoReceipt);
+			*/
 			
+			// safety....
 			if (tempo < 576) tempo = 576;
 			else if (tempo > 57600) tempo = 57600;
+			
+			OCR1A = tempo;			
 			
 			break;
 			
