@@ -346,14 +346,21 @@ void swapArrays(uint8_t **a, uint8_t **b){
 
 void handlePayload(char command, int len, char payload[]) {
 	
-	PORTB = (~(command << 3));
-
+	uint8_t mem = (~PORTB & 0b00000111);
+	PORTB = (~((command << 3) | mem));
+	
 	int i;
 	switch (command) {
 		case 0x01:  // TEMPO
 			//OCR1AH = (payload[0]+1);  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
 			tempo = 576 + (payload[0] +1) * 223;
 			OCR1A = tempo;
+			
+			char tempoReceipt[60];
+			memset(tempoReceipt, 0, 60);
+			sprintf(tempoReceipt, "Tempo=%d", (payload[0] +1));
+			tempoReceipt[59] = 0;
+			USART_SendString(tempoReceipt);
 			
 			if (tempo < 576) tempo = 576;
 			else if (tempo > 57600) tempo = 57600;
@@ -399,9 +406,6 @@ ISR (USART_RX_vect, ISR_BLOCK )
 ISR (TIMER1_COMPA_vect)
 {
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
-	
-	// always change tempo at same "time"  (just as the CTC counter maxes out)
-	//OCR1A = tempo;
 	
 	uint8_t mem = (~PORTB & 0b11111000);
 	PORTB = (~(program[step++] | mem));  // *(program + step++);
