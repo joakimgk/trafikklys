@@ -29,6 +29,8 @@ The mobile app will replace the handheld controller, in communicating the curren
 - a `RESET` command (which copies the receive buffer into the program buffer)
 - a `TEMPO` command (which sets the current tempo of the timer/interrupt)
 
+![Schematic](img/controller_wifi.png)
+
 ### Driver Unit
 
 The aim is to re-use the same driver unit as before (connected directly to the receiver unit containing the ESP8266).
