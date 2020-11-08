@@ -335,8 +335,6 @@ volatile int length = 0;
 volatile int rec_length = 0;
 // playback position
 volatile int step = 0;
-// playback delay (ms)
-volatile uint16_t tempo = 2;
 
 void swapArrays(uint8_t **a, uint8_t **b){
 	uint8_t *temp = *a;
@@ -348,6 +346,7 @@ void handlePayload(char command, int len, char payload[]) {
 	
 	uint8_t mem = (~PORTB & 0b00000111);
 	PORTB = (~((command << 3) | mem));
+	uint16_t tempo;
 	
 	int i;
 	switch (command) {
@@ -409,10 +408,14 @@ ISR (USART_RX_vect, ISR_BLOCK )
 
 ISR (TIMER1_COMPA_vect)
 {
+	uint8_t oldsrg = SREG;
+	cli();
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
 	uint8_t mem = (~PORTB & 0b11111000);
 	PORTB = (~(program[step++] | mem));  // *(program + step++);
+	
+	SREG = oldsrg;
 }
 
 void setupTimerISR()
@@ -428,6 +431,11 @@ void setupTimerISR()
 	TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
 	//TCCR1B |= (1 << WGM12)|(1 << CS10)|(1 << CS12);  // prescaling=1024 CTC-mode (two counts per microsecond)
 	sei();
+	
+	/*
+		cehteh: i'd try to stay with a constant speed counter if possible and read the datasheet, some wgm modes latch the TOP, but iirc changes to the prescaler is not/never latched
+		 i just use one timer (8 bit when slow enough) run as wall clock and do all such timing from that
+	*/
 }
 
 int main(void)
@@ -472,7 +480,7 @@ int main(void)
 	
 	
 	PORTB = 0xFF; // All leds off
-	unsigned char payload[10];
+	unsigned char payload[256];
 	
 	while(1)
 	{
@@ -502,8 +510,15 @@ int main(void)
 		
 		char * pbuffer_cmd = strstr(_buffer, "+IPD");
 		if (len > 0 && pbuffer_cmd != NULL) {
+			
+			// disable interrupts while processing data
+			uint8_t oldsrg = SREG;
+			cli();
 
 			while (pbuffer_cmd != NULL) {
+				
+				uint8_t mem = (~PORTB & 0b00000111);
+				PORTB= (~((1 << 4) | mem));  // error LED
 
 				char *pbuffer_len = strstr(pbuffer_cmd, ":");
 
@@ -519,6 +534,11 @@ int main(void)
 				
 				unsigned int dKommando = payload[0];
 				unsigned int dLengde = payload[1];
+				if (dLengde > 256) {
+					uint8_t mem = (~PORTB & 0b00000111);
+					PORTB = (~((1 << 4) | mem));  // error LED
+					dLengde = 250;
+				}
 				
 				// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
 				strncpy(payload, pbuffer_len+1 +2, dLengde);
@@ -528,6 +548,14 @@ int main(void)
 				
 				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 			}
+			
+			{
+				uint8_t mem = (~PORTB & 0b00000111);
+				PORTB=(~((0 << 4) | mem));  // error LED off		
+			}
+
+			
+			SREG = oldsrg;
 			
 		}
 
