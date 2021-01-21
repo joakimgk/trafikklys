@@ -39,6 +39,10 @@
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
 
+/* Define UDP setup */
+#define UDP_DOMAIN			"0.0.0.0"
+#define UDP_PORT			"4445"
+
 #define SSID				"Xperia z"
 #define PASSWORD			"fleskeeske"
 
@@ -202,7 +206,7 @@ bool ESP8266_Begin()
 {
 	for (uint8_t i=0;i<5;i++)
 	{
-		if(SendATandExpectResponse("ATE0","\r\nOK\r\n")||SendATandExpectResponse("AT","\r\nOK\r\n"))
+		if(SendATandExpectResponse("AT","\r\nOK\r\n")||SendATandExpectResponse("AT","\r\nOK\r\n"))
 		return true;
 	}
 	return false;
@@ -247,6 +251,15 @@ uint8_t ESP8266_JoinAccessPoint(char* _SSID, char* _PASSWORD)
 void ESP8266_CloseAllConnections() {
 	SendATandExpectResponse("AT+CIPCLOSE=5", "\r\nOK\r\n");
 }
+
+void ESP8266_QueryIPAddress() {
+	SendATandExpectResponse("AT+CIFSR", "\r\nOK\r\n");
+}
+
+void ESP8266_DisableServerMode() {
+	SendATandExpectResponse("AT+CIPSERVER=0", "\r\nOK\r\n");
+}
+
 uint8_t ESP8266_connected() 
 {
 	SendATandExpectResponse("AT+CIPSTATUS", "\r\nOK\r\n");
@@ -273,6 +286,28 @@ uint8_t ESP8266_Start(uint8_t _ConnectionNumber, char* Domain, char* Port)
 		sprintf(_atCommand, "AT+CIPSTART=\"TCP\",\"%s\",%s", Domain, Port);
 	else
 		sprintf(_atCommand, "AT+CIPSTART=\"%d\",\"TCP\",\"%s\",%s", _ConnectionNumber, Domain, Port);
+		
+	_startResponse = SendATandExpectResponse(_atCommand, "CONNECT\r\n");
+	if(!_startResponse)
+	{
+		if(Response_Status == ESP8266_RESPONSE_TIMEOUT)
+		return ESP8266_RESPONSE_TIMEOUT;
+		return ESP8266_RESPONSE_ERROR;
+	}
+	return ESP8266_RESPONSE_FINISHED;
+}
+
+uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port)
+{
+	bool _startResponse;
+	char _atCommand[60];
+	memset(_atCommand, 0, 60);
+	_atCommand[59] = 0;
+
+	if(SendATandExpectResponse("AT+CIPMUX?", "CIPMUX:0"))
+		sprintf(_atCommand, "AT+CIPSTART=\"UDP\",\"%s\",%s", Domain, Port);
+	else
+		sprintf(_atCommand, "AT+CIPSTART=\"%d\",\"UDP\",\"%s\",%s", _ConnectionNumber, Domain, Port);
 
 	_startResponse = SendATandExpectResponse(_atCommand, "CONNECT\r\n");
 	if(!_startResponse)
@@ -348,7 +383,7 @@ void swapArrays(uint8_t **a, uint8_t **b){
 void handlePayload(char command, int len, char payload[]) {
 	
 	uint8_t mem = (~PORTB & 0b00000111);
-	PORTB = (~((command << 3) | mem));
+	//PORTB = (~((command << 3) | mem));
 	uint16_t tempo;
 	
 	int i;
@@ -378,7 +413,10 @@ void handlePayload(char command, int len, char payload[]) {
 			break;
 	
 		case 0x03:  // MOTTA PROGRAM  (dump payload inn i *rec_program)
-			memcpy(rec_program, payload, len);	
+			//memcpy(rec_program, payload, len);	
+			for (i = 0; i < len; i++) {
+				rec_program[i] = payload[i];
+			}
 			rec_length = len;
 			break;
 		
@@ -445,10 +483,13 @@ int main(void)
 {
 	char _buffer[150];
 	uint8_t Connect_Status;
-	uint8_t Sample = 0;
+	//uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
 	PORTB = 0b11011111; // crash indicator (LED 5)
+	
+	DDRC = 0x00; // set PORTC for input
+	PORTC = 0xFF;
 	
 	/*
 	// create an initial program to keep the loop busy until first program is received (and started)
@@ -466,24 +507,39 @@ int main(void)
 	step = 0;
 	
 	cli();
+	PORTB = 0b00000000; // setup indicator (LED 6)
 	setupTimerISR();
 	
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
 	sei();									/* Start global interrupt */
+	
 
 	USART_SendString("HEI VELKOMMEN VERDEN");
 	
+	
 	while(!ESP8266_Begin());
+	ESP8266_CloseAllConnections();
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
-	ESP8266_ConnectionMode(SINGLE);			/* 0 = Single; 1 = Multi */
+	ESP8266_ConnectionMode(SINGLE); //SINGLE);			/* 0 = Single; 1 = Multi */
 	ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
-	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP)
-	ESP8266_JoinAccessPoint(SSID, PASSWORD);
+	// ESP8266_DisableServerMode(); // test
+	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP) {
+		ESP8266_JoinAccessPoint(SSID, PASSWORD);
+	}
 	ESP8266_Start(0, DOMAIN, PORT);
 	
 	
+	//ESP8266_QueryIPAddress();
+	// UDP init på port 4445 (on all addresses)
+	//ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT);
+	//AT+CIPSTART=0,"UDP","0.0.0.0",4445,4445,2
+	
 	PORTB = 0xFF; // All leds off
 	unsigned char payload[50];
+	
+	_delay_ms(1000);
+	USART_SendString("STARTING...");
+	_delay_ms(500);
 	
 	while(1)
 	{
@@ -494,7 +550,7 @@ int main(void)
 		if(Connect_Status == ESP8266_CONNECTED_TO_AP || Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED) {
 			ESP8266_Start(0, DOMAIN, PORT);
 		}
-		
+
 		/*
 		if (!tempoSent && Sample++ > 5) {
 			memset(_buffer, 0, 150);
@@ -510,6 +566,11 @@ int main(void)
 		int len = 0;
 		memset(_buffer, 0, 150);
 		len = Read_Data(_buffer);
+		
+		/*
+		char * pbuffer_reset = strstr(_buffer, "+UPD");
+		=> TCNT1 = 0;  // "sync" klokken (ehe ehe ehe)
+		*/
 		
 		char * pbuffer_cmd = strstr(_buffer, "+IPD");
 		if (len > 0 && pbuffer_cmd != NULL) {
@@ -537,9 +598,10 @@ int main(void)
 				
 				unsigned int dKommando = payload[0];
 				unsigned int dLengde = payload[1];
+				
 				if (dLengde > 49) {
-					uint8_t mem = (~PORTB & 0b00000111);
-					PORTB = (~((1 << 4) | mem));  // error LED
+					//uint8_t mem = (~PORTB & 0b00000111);
+					//PORTB = (~((1 << 4) | mem));  // error LED
 					dLengde = 49;
 				}
 				
