@@ -244,6 +244,9 @@ uint8_t ESP8266_JoinAccessPoint(char* _SSID, char* _PASSWORD)
 	}
 }
 
+void ESP8266_CloseAllConnections() {
+	SendATandExpectResponse("AT+CIPCLOSE=5", "\r\nOK\r\n");
+}
 uint8_t ESP8266_connected() 
 {
 	SendATandExpectResponse("AT+CIPSTATUS", "\r\nOK\r\n");
@@ -321,7 +324,7 @@ uint16_t Read_Data(char* _buffer)
 	return len;
 }
 
-# define BUFFER_LENGTH 125
+# define BUFFER_LENGTH 40
 # define SLOW 3
 # define RAPID 5
 
@@ -480,17 +483,17 @@ int main(void)
 	
 	
 	PORTB = 0xFF; // All leds off
-	unsigned char payload[250];
+	unsigned char payload[50];
 	
 	while(1)
 	{
-		/*
 		Connect_Status = ESP8266_connected();
-		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP)
-		ESP8266_JoinAccessPoint(SSID, PASSWORD);
-		if(Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED)
-		ESP8266_Start(0, DOMAIN, PORT);
-		*/
+		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP) {
+			ESP8266_JoinAccessPoint(SSID, PASSWORD);
+		}
+		if(Connect_Status == ESP8266_CONNECTED_TO_AP || Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED) {
+			ESP8266_Start(0, DOMAIN, PORT);
+		}
 		
 		/*
 		if (!tempoSent && Sample++ > 5) {
@@ -512,13 +515,13 @@ int main(void)
 		if (len > 0 && pbuffer_cmd != NULL) {
 			
 			// disable interrupts while processing data
-			uint8_t oldsrg = SREG;
-			cli();
+			//uint8_t oldsrg = SREG;
+			//cli();
 
 			while (pbuffer_cmd != NULL) {
 				
-				uint8_t mem = (~PORTB & 0b00000111);
-				PORTB= (~((1 << 4) | mem));  // error LED
+				//uint8_t mem = (~PORTB & 0b00000111);
+				//PORTB= (~((1 << 4) | mem));  // error LED
 
 				char *pbuffer_len = strstr(pbuffer_cmd, ":");
 
@@ -534,10 +537,10 @@ int main(void)
 				
 				unsigned int dKommando = payload[0];
 				unsigned int dLengde = payload[1];
-				if (dLengde > 256) {
+				if (dLengde > 49) {
 					uint8_t mem = (~PORTB & 0b00000111);
 					PORTB = (~((1 << 4) | mem));  // error LED
-					dLengde = 250;
+					dLengde = 49;
 				}
 				
 				// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
@@ -549,6 +552,7 @@ int main(void)
 				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 			}
 			
+			/*
 			{
 				uint8_t mem = (~PORTB & 0b00000111);
 				PORTB=(~((0 << 4) | mem));  // error LED off		
@@ -556,6 +560,7 @@ int main(void)
 
 			
 			SREG = oldsrg;
+			*/
 			
 		}
 
