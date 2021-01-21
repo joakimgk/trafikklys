@@ -480,7 +480,7 @@ int main(void)
 	
 	
 	PORTB = 0xFF; // All leds off
-	unsigned char payload[256];
+	unsigned char payload[250];
 	
 	while(1)
 	{
