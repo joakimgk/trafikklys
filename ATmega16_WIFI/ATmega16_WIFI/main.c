@@ -34,7 +34,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.211.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -44,7 +44,7 @@
 #define UDP_PORT			"4445"
 
 #define SSID				"Xperia z"
-#define PASSWORD			"fleskeeske"
+#define PASSWORD			"fleskeeskesss"
 
 
 enum ESP8266_RESPONSE_STATUS{
@@ -172,18 +172,6 @@ bool SendATandExpectResponse(char* ATCommand, char* ExpectedResponse)
 	return WaitForExpectedResponse(ExpectedResponse);
 }
 
-void echoTest(char *whatIgot) {
-	char smthing[150];
-	memset(smthing, 0, 150);
-	sprintf(smthing, "whatIgot=%s", whatIgot);
-	USART_SendString(smthing);
-}
-
-bool IsATCommand(char *_buffer) {
-	return (!(_buffer[0] == 'A' && _buffer[1] == 'T' && _buffer[2] == '+'));
-}
-
-
 bool ESP8266_ApplicationMode(uint8_t Mode)
 {
 	char _atCommand[20];
@@ -285,7 +273,7 @@ uint8_t ESP8266_Start(uint8_t _ConnectionNumber, char* Domain, char* Port)
 	if(SendATandExpectResponse("AT+CIPMUX?", "CIPMUX:0"))
 		sprintf(_atCommand, "AT+CIPSTART=\"TCP\",\"%s\",%s", Domain, Port);
 	else
-		sprintf(_atCommand, "AT+CIPSTART=\"%d\",\"TCP\",\"%s\",%s", _ConnectionNumber, Domain, Port);
+		sprintf(_atCommand, "AT+CIPSTART=%d,\"TCP\",\"%s\",%s", _ConnectionNumber, Domain, Port);
 		
 	_startResponse = SendATandExpectResponse(_atCommand, "CONNECT\r\n");
 	if(!_startResponse)
@@ -297,7 +285,7 @@ uint8_t ESP8266_Start(uint8_t _ConnectionNumber, char* Domain, char* Port)
 	return ESP8266_RESPONSE_FINISHED;
 }
 
-uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port)
+uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, char* LocalPort, uint8_t _Mode)
 {
 	bool _startResponse;
 	char _atCommand[60];
@@ -307,7 +295,7 @@ uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port)
 	if(SendATandExpectResponse("AT+CIPMUX?", "CIPMUX:0"))
 		sprintf(_atCommand, "AT+CIPSTART=\"UDP\",\"%s\",%s", Domain, Port);
 	else
-		sprintf(_atCommand, "AT+CIPSTART=\"%d\",\"UDP\",\"%s\",%s", _ConnectionNumber, Domain, Port);
+		sprintf(_atCommand, "AT+CIPSTART=%d,\"UDP\",\"%s\",%s,%s,%d", _ConnectionNumber, Domain, Port, LocalPort, _Mode);
 
 	_startResponse = SendATandExpectResponse(_atCommand, "CONNECT\r\n");
 	if(!_startResponse)
@@ -319,11 +307,11 @@ uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port)
 	return ESP8266_RESPONSE_FINISHED;
 }
 
-uint8_t ESP8266_Send(char* Data)
+uint8_t ESP8266_Send(uint8_t _ConnectionNumber, char* Data)
 {
 	char _atCommand[20];
 	memset(_atCommand, 0, 20);
-	sprintf(_atCommand, "AT+CIPSEND=%d", (strlen(Data)+2));
+	sprintf(_atCommand, "AT+CIPSEND=%d,%d", _ConnectionNumber, (strlen(Data)+2));
 	_atCommand[19] = 0;
 	SendATandExpectResponse(_atCommand, "\r\nOK\r\n>");
 	if(!SendATandExpectResponse(Data, "\r\nSEND OK\r\n"))
@@ -392,14 +380,6 @@ void handlePayload(char command, int len, char payload[]) {
 			//OCR1AH = (payload[0]+1);  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
 			tempo = 576 + (payload[0] +1) * 223;
 
-			/*
-			char tempoReceipt[60];
-			memset(tempoReceipt, 0, 60);
-			sprintf(tempoReceipt, "Tempo=%d", (payload[0] +1));
-			tempoReceipt[59] = 0;
-			USART_SendString(tempoReceipt);
-			*/
-			
 			// safety....
 			if (tempo < 576) tempo = 576;
 			else if (tempo > 57600) tempo = 57600;
@@ -429,6 +409,10 @@ void handlePayload(char command, int len, char payload[]) {
 			step = 0;  // og RESET!
 			break;
 			
+		case 0x05: // SYNC (reset counter)
+			TCNT1 = OCR1A;
+			break;
+
 		default:
 			break;
 	}
@@ -457,6 +441,10 @@ ISR (TIMER1_COMPA_vect)
 	PORTB = (~(program[step++] | mem));  // *(program + step++);
 	
 	SREG = oldsrg;
+	
+		// test: send UDP sync packet
+		//char resetMessage[3] = { 0x05, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
+		//ESP8266_Send(1, resetMessage);
 }
 
 void setupTimerISR()
@@ -481,12 +469,14 @@ void setupTimerISR()
 
 int main(void)
 {
-	char _buffer[150];
+	char _buffer[32];
 	uint8_t Connect_Status;
 	//uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
+	DDRD = 0xFF;
 	PORTB = 0b11011111; // crash indicator (LED 5)
+	PORTD = 0b11111111; // network setup indicator (LED 2) OFF
 	
 	DDRC = 0x00; // set PORTC for input
 	PORTC = 0xFF;
@@ -516,41 +506,39 @@ int main(void)
 
 	USART_SendString("HEI VELKOMMEN VERDEN");
 	
-	
 	while(!ESP8266_Begin());
 	ESP8266_CloseAllConnections();
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
-	ESP8266_ConnectionMode(SINGLE); //SINGLE);			/* 0 = Single; 1 = Multi */
-	ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
-	// ESP8266_DisableServerMode(); // test
+		ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
+
+	ESP8266_ConnectionMode(MULTIPLE); //SINGLE);			/* 0 = Single; 1 = Multi */
+	ESP8266_DisableServerMode(); // test
 	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP) {
 		ESP8266_JoinAccessPoint(SSID, PASSWORD);
 	}
 	ESP8266_Start(0, DOMAIN, PORT);
 	
-	
-	//ESP8266_QueryIPAddress();
+	ESP8266_QueryIPAddress();
 	// UDP init på port 4445 (on all addresses)
-	//ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT);
+	ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
 	//AT+CIPSTART=0,"UDP","0.0.0.0",4445,4445,2
-	
+
 	PORTB = 0xFF; // All leds off
+	PORTD = 0b11111011; // network setup indicator (LED 2) ON
 	unsigned char payload[50];
-	
-	_delay_ms(1000);
-	USART_SendString("STARTING...");
-	_delay_ms(500);
-	
+			
 	while(1)
 	{
+		
 		Connect_Status = ESP8266_connected();
 		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP) {
 			ESP8266_JoinAccessPoint(SSID, PASSWORD);
 		}
 		if(Connect_Status == ESP8266_CONNECTED_TO_AP || Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED) {
 			ESP8266_Start(0, DOMAIN, PORT);
+			ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
 		}
-
+		
 		/*
 		if (!tempoSent && Sample++ > 5) {
 			memset(_buffer, 0, 150);
@@ -564,7 +552,7 @@ int main(void)
 		
 	
 		int len = 0;
-		memset(_buffer, 0, 150);
+		memset(_buffer, 0, 32);
 		len = Read_Data(_buffer);
 		
 		/*
@@ -613,16 +601,6 @@ int main(void)
 				
 				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 			}
-			
-			/*
-			{
-				uint8_t mem = (~PORTB & 0b00000111);
-				PORTB=(~((0 << 4) | mem));  // error LED off		
-			}
-
-			
-			SREG = oldsrg;
-			*/
 			
 		}
 
