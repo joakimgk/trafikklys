@@ -34,7 +34,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.211.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.67.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -44,7 +44,7 @@
 #define UDP_PORT			"4445"
 
 #define SSID				"Xperia z"
-#define PASSWORD			"fleskeeskesss"
+#define PASSWORD			"fleskeeske"
 
 
 enum ESP8266_RESPONSE_STATUS{
@@ -356,11 +356,14 @@ volatile uint8_t program[BUFFER_LENGTH];
 volatile uint8_t rec_program[BUFFER_LENGTH];
 
 // length of current program
-volatile int length = 0;
+volatile uint8_t length = 0;
 // length of received program
-volatile int rec_length = 0;
+volatile uint8_t rec_length = 0;
 // playback position
-volatile int step = 0;
+volatile uint8_t step = 0;
+// tempo multiplier
+volatile uint8_t tempo = 25;
+volatile uint8_t ticks = 0;
 
 void swapArrays(uint8_t **a, uint8_t **b){
 	uint8_t *temp = *a;
@@ -372,20 +375,18 @@ void handlePayload(char command, int len, char payload[]) {
 	
 	uint8_t mem = (~PORTB & 0b00000111);
 	//PORTB = (~((command << 3) | mem));
-	uint16_t tempo;
+	uint16_t test;
 	
 	int i;
 	switch (command) {
 		case 0x01:  // TEMPO
-			//OCR1AH = (payload[0]+1);  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
-			tempo = 576 + (payload[0] +1) * 223;
+			test = payload[0];
 
 			// safety....
-			if (tempo < 576) tempo = 576;
-			else if (tempo > 57600) tempo = 57600;
+			if (test < 1) test = 1;
+			else if (test > 255) test = 256;
 			
-			OCR1A = tempo;			
-			
+			tempo = test;			
 			break;
 			
 		case 0x02:  // RESET (restart nåværende program)
@@ -435,10 +436,15 @@ ISR (TIMER1_COMPA_vect)
 {
 	uint8_t oldsrg = SREG;
 	cli();
-	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
-	uint8_t mem = (~PORTB & 0b11111000);
-	PORTB = (~(program[step++] | mem));  // *(program + step++);
+	if (ticks++ >= tempo) {
+		ticks = 0;
+		
+		if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
+	
+		uint8_t mem = (~PORTB & 0b11111000);
+		PORTB = (~(program[step++] | mem));  // *(program + step++);
+	}
 	
 	SREG = oldsrg;
 	
@@ -453,18 +459,13 @@ void setupTimerISR()
 	TCCR1A = 0; // Reset control registers timer1 /not needed, safety
 	TCCR1B = 0; // Reset control registers timer1 // not needed, safety
 	TIMSK1 |= (1 << OCIE1A); // | (1 << TOIE1); //timer1 output compare match and overflow interrupt enable
-	OCR1A = 57600; // Set TOP/compared value (your value) (maximum is 65535 i think)
+	OCR1A = 225; // ~3/1000 sec "base rate"
 	TCNT1 = 0;
 	//TCCR1B |= (1 << WGM12)|(1 << CS00);  // NO PRESCALING??
 	//TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
 	TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
 	//TCCR1B |= (1 << WGM12)|(1 << CS10)|(1 << CS12);  // prescaling=1024 CTC-mode (two counts per microsecond)
 	sei();
-	
-	/*
-		cehteh: i'd try to stay with a constant speed counter if possible and read the datasheet, some wgm modes latch the TOP, but iirc changes to the prescaler is not/never latched
-		 i just use one timer (8 bit when slow enough) run as wall clock and do all such timing from that
-	*/
 }
 
 int main(void)
@@ -529,7 +530,7 @@ int main(void)
 			
 	while(1)
 	{
-		
+		/*
 		Connect_Status = ESP8266_connected();
 		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP) {
 			ESP8266_JoinAccessPoint(SSID, PASSWORD);
@@ -538,6 +539,7 @@ int main(void)
 			ESP8266_Start(0, DOMAIN, PORT);
 			ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
 		}
+		*/
 		
 		/*
 		if (!tempoSent && Sample++ > 5) {
