@@ -5,7 +5,7 @@
 */
 
 
-#define F_CPU 8000000UL			/* Define CPU Frequency e.g. here its Ext. 12MHz */
+#define F_CPU 3686400UL			/* Define CPU Frequency e.g. here its Ext. 12MHz */
 #include <avr/io.h>					/* Include AVR std. library file */
 #include <util/delay.h>				/* Include Delay header file */
 #include <stdbool.h>				/* Include standard boolean library */
@@ -34,10 +34,14 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.56.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
+
+/* Define UDP setup */
+#define UDP_DOMAIN			"0.0.0.0"
+#define UDP_PORT			"4445"
 
 #define SSID				"Xperia z"
 #define PASSWORD			"fleskeeske"
@@ -202,7 +206,7 @@ bool ESP8266_Begin()
 {
 	for (uint8_t i=0;i<5;i++)
 	{
-		if(SendATandExpectResponse("ATE0","\r\nOK\r\n")||SendATandExpectResponse("AT","\r\nOK\r\n"))
+		if(SendATandExpectResponse("AT","\r\nOK\r\n")||SendATandExpectResponse("AT","\r\nOK\r\n"))
 		return true;
 	}
 	return false;
@@ -244,6 +248,18 @@ uint8_t ESP8266_JoinAccessPoint(char* _SSID, char* _PASSWORD)
 	}
 }
 
+void ESP8266_CloseAllConnections() {
+	SendATandExpectResponse("AT+CIPCLOSE=5", "\r\nOK\r\n");
+}
+
+void ESP8266_QueryIPAddress() {
+	SendATandExpectResponse("AT+CIFSR", "\r\nOK\r\n");
+}
+
+void ESP8266_DisableServerMode() {
+	SendATandExpectResponse("AT+CIPSERVER=0", "\r\nOK\r\n");
+}
+
 uint8_t ESP8266_connected() 
 {
 	SendATandExpectResponse("AT+CIPSTATUS", "\r\nOK\r\n");
@@ -269,7 +285,7 @@ uint8_t ESP8266_Start(uint8_t _ConnectionNumber, char* Domain, char* Port)
 	if(SendATandExpectResponse("AT+CIPMUX?", "CIPMUX:0"))
 		sprintf(_atCommand, "AT+CIPSTART=\"TCP\",\"%s\",%s", Domain, Port);
 	else
-		sprintf(_atCommand, "AT+CIPSTART=\"%d\",\"TCP\",\"%s\",%s", _ConnectionNumber, Domain, Port);
+		sprintf(_atCommand, "AT+CIPSTART=%d,\"TCP\",\"%s\",%s", _ConnectionNumber, Domain, Port);
 
 	_startResponse = SendATandExpectResponse(_atCommand, "CONNECT\r\n");
 	if(!_startResponse)
@@ -281,11 +297,33 @@ uint8_t ESP8266_Start(uint8_t _ConnectionNumber, char* Domain, char* Port)
 	return ESP8266_RESPONSE_FINISHED;
 }
 
-uint8_t ESP8266_Send(char* Data)
+uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, char* LocalPort, uint8_t _Mode)
+{
+	bool _startResponse;
+	char _atCommand[60];
+	memset(_atCommand, 0, 60);
+	_atCommand[59] = 0;
+
+	if(SendATandExpectResponse("AT+CIPMUX?", "CIPMUX:0"))
+		sprintf(_atCommand, "AT+CIPSTART=\"UDP\",\"%s\",%s", Domain, Port);
+	else
+		sprintf(_atCommand, "AT+CIPSTART=%d,\"UDP\",\"%s\",%s,%s,%d", _ConnectionNumber, Domain, Port, LocalPort, _Mode);
+
+	_startResponse = SendATandExpectResponse(_atCommand, "CONNECT\r\n");
+	if(!_startResponse)
+	{
+		if(Response_Status == ESP8266_RESPONSE_TIMEOUT)
+		return ESP8266_RESPONSE_TIMEOUT;
+		return ESP8266_RESPONSE_ERROR;
+	}
+	return ESP8266_RESPONSE_FINISHED;
+}
+
+uint8_t ESP8266_Send(uint8_t _ConnectionNumber, char* Data)
 {
 	char _atCommand[20];
 	memset(_atCommand, 0, 20);
-	sprintf(_atCommand, "AT+CIPSEND=%d", (strlen(Data)+2));
+	sprintf(_atCommand, "AT+CIPSEND=%d,%d", _ConnectionNumber, (strlen(Data)+2));
 	_atCommand[19] = 0;
 	SendATandExpectResponse(_atCommand, "\r\nOK\r\n>");
 	if(!SendATandExpectResponse(Data, "\r\nSEND OK\r\n"))
@@ -321,7 +359,7 @@ uint16_t Read_Data(char* _buffer)
 	return len;
 }
 
-# define BUFFER_LENGTH 125
+# define BUFFER_LENGTH 40
 # define SLOW 3
 # define RAPID 5
 
@@ -330,14 +368,24 @@ volatile uint8_t program[BUFFER_LENGTH];
 volatile uint8_t rec_program[BUFFER_LENGTH];
 
 // length of current program
-volatile int length = 0;
+volatile uint8_t length = 0;
 // length of received program
-volatile int rec_length = 0;
+volatile uint8_t rec_length = 0;
 // playback position
-volatile int step = 0;
-// playback delay (ms)
-volatile uint16_t tempo = 2;
+volatile uint8_t step = 0;
+// tempo multiplier
+volatile uint8_t tempo = 25;
+volatile uint8_t ticks = 0;
 
+volatile uint8_t ticks2 = 0;
+volatile uint16_t sync = 255 * 10;  // sync hvert 10. sekund (NB! uavhengig av `tempo`)
+volatile bool doSync = false;
+
+volatile uint8_t measureJitter = 0;  // 0: expired, 1: start, 2: sending, 3: done (for a while)
+volatile uint8_t jitterTicks = 0;
+volatile uint16_t jitter = 0;
+
+volatile bool master = false;
 void swapArrays(uint8_t **a, uint8_t **b){
 	uint8_t *temp = *a;
 	*a = *b;
@@ -346,13 +394,20 @@ void swapArrays(uint8_t **a, uint8_t **b){
 
 void handlePayload(char command, int len, char payload[]) {
 	
-	PORTB = (~command);
+	uint8_t mem = (~PORTB & 0b00000111);
+	//PORTB = (~((command << 3) | mem));
+	uint16_t test;
 
 	int i;
 	switch (command) {
 		case 0x01:  // TEMPO
-			//OCR1AH = payload[0];  // 8-bits (byte) put directly in high byte of (16-bit) TOP register
-			OCR1A = 32768 + (payload[0] + 1) * 128 -1; //256;
+			test = payload[0];
+
+			// safety....
+			if (test < 1) test = 1;
+			else if (test > 255) test = 256;
+			
+			tempo = test;			
 			break;
 			
 		case 0x02:  // RESET (restart nåværende program)
@@ -360,7 +415,10 @@ void handlePayload(char command, int len, char payload[]) {
 			break;
 	
 		case 0x03:  // MOTTA PROGRAM  (dump payload inn i *rec_program)
-			memcpy(rec_program, payload, len);	
+			//memcpy(rec_program, payload, len);	
+			for (i = 0; i < len; i++) {
+				rec_program[i] = payload[i];
+			}
 			rec_length = len;
 			break;
 		
@@ -373,6 +431,19 @@ void handlePayload(char command, int len, char payload[]) {
 			step = 0;  // og RESET!
 			break;
 			
+			// assume delay = 50ms
+		case 0x05: // SYNC (reset counter)
+			if (measureJitter == 0) {
+				jitterTicks = 0;
+				measureJitter = 1;
+			} else TCNT1 = jitter;
+			break;
+			
+		case 0x06: // PING RESPONSE 
+			measureJitter = 3; // done
+			jitter = (jitterTicks / 2 * 225) % 225;
+			break;
+
 		default:
 			break;
 	}
@@ -393,74 +464,129 @@ ISR (USART_RXC_vect)
 
 ISR (TIMER1_COMPA_vect)
 {
+	uint8_t oldsrg = SREG;
+	cli();
+	
+	if (ticks++ >= tempo) {
+		ticks = 0;
+		
 	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
-	uint8_t mem = (~PORTB & 0b00011111);
+		uint8_t mem = (~PORTB & 0b11111000);
 	PORTB = (~(program[step++] | mem));  // *(program + step++);
+	}
+	
+	if (!master) {
+		if (measureJitter == 2) jitterTicks++;
+		if (measureJitter == 1) {
+			jitterTicks = 0;
+			measureJitter = 2;  // send ping ASAP
+		}
+		
+	} else {
+	
+		if (ticks2++ >= sync) {
+			ticks2 = 0;
+			doSync = true;
+			} else {
+			doSync = false;
+		}
+	}
+	
+	SREG = oldsrg;
+}
+
+ISR (TIMER0_COMPA_vect) {
+	cli();
+	PORTD ^= (1 << 3);
+	TCNT0 = 0;
+	sei();
 }
 
 void setupTimerISR()
 {
 	cli();
+	
+	// set up timer1
 	TCCR1A = 0; // Reset control registers timer1 /not needed, safety
 	TCCR1B = 0; // Reset control registers timer1 // not needed, safety
 	TIMSK |= (1 << OCIE1A); // | (1 << TOIE1); //timer1 output compare match and overflow interrupt enable
-	OCR1A = 40000; // Set TOP/compared value (your value) (maximum is 65535 i think)
+	OCR1A = 225; // 1/256 sec "base rate"
 	TCNT1 = 0;
-	TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
-	//TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
+	//TCCR1B |= (1 << WGM12)|(1 << CS11);  // prescaling=8 CTC-mode (two counts per microsecond)
+	TCCR1B |= (1 << WGM12)|(1 << CS11)|(1 << CS10);  // prescaling=64 CTC-mode (two counts per microsecond)
 	//TCCR1B |= (1 << WGM12)|(1 << CS10)|(1 << CS12);  // prescaling=1024 CTC-mode (two counts per microsecond)
 	sei();
 }
 
 int main(void)
 {
+	
+	_delay_ms(200);
+	
 	char _buffer[150];
 	uint8_t Connect_Status;
-	uint8_t Sample = 0;
+	//uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
-	PORTB = 0b01111111; // crash indicator (LED 7)
+	DDRD = 0xFF;
+	PORTB = 0b11011111; // crash indicator (LED 5)
+	PORTD = 0b11111111; // network setup indicator (LED 2) OFF
 	
-	// create an initial program to keep the loop busy until first program is received (and started)
-	program[0] = 0b10000000;
-	program[1] = 0b01000000;
-	program[2] = 0b00100000;
-	program[3] = 0b01000000;
+	DDRC = 0x00; // set PORTC for input
+	PORTC = 0xFF;
 
-	length = 4;
+
+
+	program[0] = 0b00000111;
+	program[1] = 0b00000000;
+	length = 2;
+	
 	step = 0;
 	
 	cli();
+	PORTB = 0b00000000; // setup indicator (LED 6)
 	setupTimerISR();
 
-	
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
 	sei();									/* Start global interrupt */
+
 
 	USART_SendString("HEI VELKOMMEN VERDEN");
 	
 	while(!ESP8266_Begin());
+	ESP8266_CloseAllConnections();
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
-	ESP8266_ConnectionMode(SINGLE);			/* 0 = Single; 1 = Multi */
 	ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
-	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP)
+
+	ESP8266_ConnectionMode(MULTIPLE); //SINGLE);			/* 0 = Single; 1 = Multi */
+	ESP8266_DisableServerMode(); // test
+	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP) {
 	ESP8266_JoinAccessPoint(SSID, PASSWORD);
+	}
 	ESP8266_Start(0, DOMAIN, PORT);
 	
+	ESP8266_QueryIPAddress();
+	// UDP init på port 4445 (on all addresses)
+	ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
+	//AT+CIPSTART=0,"UDP","0.0.0.0",4445,4445,2
 	
 	PORTB = 0xFF; // All leds off
-	unsigned char payload[10];
-	PORTB = (~3);
+	PORTD = 0b11111011; // network setup indicator (LED 2) ON
+	unsigned char payload[50];
+	
 	
 	while(1)
 	{
 		/*
 		Connect_Status = ESP8266_connected();
-		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP)
+		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP) {
 		ESP8266_JoinAccessPoint(SSID, PASSWORD);
-		if(Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED)
+		}
+		if(Connect_Status == ESP8266_CONNECTED_TO_AP || Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED) {
 		ESP8266_Start(0, DOMAIN, PORT);
+			ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
+		}
 		*/
 		
 		/*
@@ -473,6 +599,21 @@ int main(void)
 			_delay_ms(500);
 		}
 		*/
+		
+		if (master && doSync) {
+			doSync = false;
+
+			// test: send UDP sync packet
+			char resetMessage[3] = { 0x05, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
+			ESP8266_Send(1, resetMessage);
+		}
+		
+		
+		if (!master && measureJitter == 2) {
+			// send UDP sync packet
+			char ping[3] = { 0x06, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
+			ESP8266_Send(1, ping);
+		}
 		
 	
 		int len = 0;
@@ -498,6 +639,12 @@ int main(void)
 				
 				unsigned int dKommando = payload[0];
 				unsigned int dLengde = payload[1];
+				
+				if (dLengde > 149) {
+					//uint8_t mem = (~PORTB & 0b00000111);
+					//PORTB = (~((1 << 4) | mem));  // error LED
+					dLengde = 149;
+				}
 				
 				// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
 				strncpy(payload, pbuffer_len+1 +2, dLengde);
