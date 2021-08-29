@@ -398,7 +398,7 @@ void handlePayload(char command, int len, char payload[]) {
 	//PORTB = (~((command << 3) | mem));
 	uint16_t test;
 
-	int i;
+	uint8_t i;
 	switch (command) {
 		case 0x01:  // TEMPO
 			test = payload[0];
@@ -450,7 +450,7 @@ void handlePayload(char command, int len, char payload[]) {
 
 }
 
-ISR (USART_RXC_vect)
+ISR (USART_RXC_vect, ISR_BLOCK)
 { 
 	uint8_t oldsrg = SREG;
 	cli();
@@ -496,13 +496,6 @@ ISR (TIMER1_COMPA_vect)
 	SREG = oldsrg;
 }
 
-ISR (TIMER0_COMPA_vect) {
-	cli();
-	PORTD ^= (1 << 3);
-	TCNT0 = 0;
-	sei();
-}
-
 void setupTimerISR()
 {
 	cli();
@@ -524,7 +517,7 @@ int main(void)
 	
 	_delay_ms(200);
 	
-	char _buffer[150];
+	char _buffer[32];
 	uint8_t Connect_Status;
 	//uint8_t Sample = 0;
 	
@@ -545,7 +538,7 @@ int main(void)
 	step = 0;
 	
 	cli();
-	PORTB = 0b00000000; // setup indicator (LED 6)
+	PORTB = 0b10000000; // setup indicator (LED 6)
 	setupTimerISR();
 
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
@@ -573,8 +566,13 @@ int main(void)
 	
 	PORTB = 0xFF; // All leds off
 	PORTD = 0b11111011; // network setup indicator (LED 2) ON
-	unsigned char payload[50];
+	unsigned char payload[32];
+	unsigned char readme[32];
+	unsigned char tmp[32];
 	
+	uint8_t dKanal;
+	uint8_t dKommando;
+	uint8_t dLengde;
 	
 	while(1)
 	{
@@ -599,7 +597,7 @@ int main(void)
 			_delay_ms(500);
 		}
 		*/
-		
+		/*
 		if (master && doSync) {
 			doSync = false;
 
@@ -614,42 +612,42 @@ int main(void)
 			char ping[3] = { 0x06, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
 			ESP8266_Send(1, ping);
 		}
-		
+		*/
 	
-		int len = 0;
-		memset(_buffer, 0, 150);
-		len = Read_Data(_buffer);
+		uint8_t len = 0;
+		memset(readme, 0, 32);
+		len = Read_Data(readme);
 		
-		char * pbuffer_cmd = strstr(_buffer, "+IPD");
+		unsigned char * pbuffer_cmd = strstr(readme, "+IPD");
 		if (len > 0 && pbuffer_cmd != NULL) {
 
 			while (pbuffer_cmd != NULL) {
 
-				char *pbuffer_len = strstr(pbuffer_cmd, ":");
+				unsigned char *pbuffer_len = strstr(pbuffer_cmd, ":");
 
-				int startpos = (int)(pbuffer_cmd - _buffer);
-				int endpos = (int)(pbuffer_len - _buffer);
+				uint8_t startpos = (uint8_t)(pbuffer_cmd - readme);
+				uint8_t endpos = (uint8_t)(pbuffer_len - readme);
 
-				// hent ut lengde av pakke (IPD)
-				strncpy(payload, pbuffer_len-1, endpos-(startpos+5));
-				int len = 0;
-				
-				sscanf(payload, "%d", &len);
-				strncpy(payload, pbuffer_len+1, len);
-				
-				unsigned int dKommando = payload[0];
-				unsigned int dLengde = payload[1];
-				
-				if (dLengde > 149) {
-					//uint8_t mem = (~PORTB & 0b00000111);
-					//PORTB = (~((1 << 4) | mem));  // error LED
-					dLengde = 149;
-				}
-				
+				// make scratch space (tmp) for tokenizer
+				if (endpos > 31) break;  //endpos = 49;
+				strncpy(tmp, pbuffer_cmd, endpos);
+				tmp[endpos] = 0;
+
+				char * token = strtok(tmp, ",");    // +IPD "header" (ignored)
+				token = strtok(NULL, ":");
+
+				sscanf(token, "%d", &dLengde);     // data length	
+				if (dLengde > 31) break;  // safety; else just abort 
+
+				memcpy(payload, pbuffer_len+1, dLengde);
+
+				dKommando = payload[0];
+				dLengde = payload[1];
+
 				// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
 				strncpy(payload, pbuffer_len+1 +2, dLengde);
 				payload[dLengde] = 0;
-				
+
 				handlePayload(dKommando, dLengde, payload);
 				
 				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
