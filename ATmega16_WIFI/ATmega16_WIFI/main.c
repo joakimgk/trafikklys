@@ -24,6 +24,9 @@
 #define SINGLE					0
 #define MULTIPLE				1
 
+/* Message Mode */
+#define SHOW_REMOTE_ADDR		0
+
 /* Application Mode */
 #define NORMAL					0
 #define TRANSPERANT				1
@@ -34,7 +37,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.56.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.100.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -183,6 +186,14 @@ bool IsATCommand(char *_buffer) {
 	return (!(_buffer[0] == 'A' && _buffer[1] == 'T' && _buffer[2] == '+'));
 }
 
+bool ESP8266_MessageMode(uint8_t Mode)
+{
+	char _atCommand[20];
+	memset(_atCommand, 0, 20);
+	sprintf(_atCommand, "AT+CIPDINFO=%d", Mode);
+	_atCommand[19] = 0;
+	return SendATandExpectResponse(_atCommand, "\r\nOK\r\n");
+}
 
 bool ESP8266_ApplicationMode(uint8_t Mode)
 {
@@ -431,19 +442,33 @@ void handlePayload(char command, int len, char payload[]) {
 			step = 0;  // og RESET!
 			break;
 			
+			/*
 			// assume delay = 50ms
 		case 0x05: // SYNC (reset counter)
+			if (master) master = false;
+		
 			if (measureJitter == 0) {
 				jitterTicks = 0;
 				measureJitter = 1;
-			} else TCNT1 = jitter;
+			}
+			if (measureJitter == 3) {
+				TCNT1 = jitter;
+				measureJitter = 0;  // get ready for next round
+			}
 			break;
 			
-		case 0x06: // PING RESPONSE 
+		case 0x06:  // PING REQUEST
+			if (master) {
+				// determine sender IP
+				// send ping response (0x07)
+			}
+			break;
+			
+		case 0x07: // PING RESPONSE 
 			measureJitter = 3; // done
 			jitter = (jitterTicks / 2 * 225) % 225;
 			break;
-
+*/
 		default:
 			break;
 	}
@@ -470,12 +495,13 @@ ISR (TIMER1_COMPA_vect)
 	if (ticks++ >= tempo) {
 		ticks = 0;
 		
-	if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
+		if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
 		uint8_t mem = (~PORTB & 0b11111000);
-	PORTB = (~(program[step++] | mem));  // *(program + step++);
+		PORTB = (~(program[step++] | mem));  // *(program + step++);
 	}
 	
+	/*
 	if (!master) {
 		if (measureJitter == 2) jitterTicks++;
 		if (measureJitter == 1) {
@@ -492,9 +518,11 @@ ISR (TIMER1_COMPA_vect)
 			doSync = false;
 		}
 	}
+	*/
 	
 	SREG = oldsrg;
 }
+
 
 void setupTimerISR()
 {
@@ -529,8 +557,6 @@ int main(void)
 	DDRC = 0x00; // set PORTC for input
 	PORTC = 0xFF;
 
-
-
 	program[0] = 0b00000111;
 	program[1] = 0b00000000;
 	length = 2;
@@ -544,28 +570,36 @@ int main(void)
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
 	sei();									/* Start global interrupt */
 
-
 	USART_SendString("HEI VELKOMMEN VERDEN");
 	
+	PORTB = 0b11000000; // setup indicator (LED 6)
 	while(!ESP8266_Begin());
+	
+	PORTB = 0b11100000; // setup indicator (LED 6)
 	ESP8266_CloseAllConnections();
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
 	ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
 
-	ESP8266_ConnectionMode(MULTIPLE); //SINGLE);			/* 0 = Single; 1 = Multi */
-	ESP8266_DisableServerMode(); // test
+    uint8_t connectionMode = MULTIPLE;
+	ESP8266_ConnectionMode(connectionMode); //SINGLE);			/* 0 = Single; 1 = Multi */
+	//ESP8266_DisableServerMode(); // test
 	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP) {
-	ESP8266_JoinAccessPoint(SSID, PASSWORD);
+		ESP8266_JoinAccessPoint(SSID, PASSWORD);
 	}
+	//ESP8266_MessageMode(SHOW_REMOTE_ADDR);		/* 0 = Normal Mode; 1 = Show Remote Host/Port */
+	
 	ESP8266_Start(0, DOMAIN, PORT);
+	PORTB = 0b11110000; // setup indicator (LED 6)
 	
-	ESP8266_QueryIPAddress();
-	// UDP init på port 4445 (on all addresses)
-	ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
-	//AT+CIPSTART=0,"UDP","0.0.0.0",4445,4445,2
+	if (connectionMode == MULTIPLE) {
+		ESP8266_QueryIPAddress();
+		// UDP init på port 4445 (on all addresses)
+		ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
+		//AT+CIPSTART=0,"UDP","0.0.0.0",4445,4445,2
+	}
 	
-	PORTB = 0xFF; // All leds off
-	PORTD = 0b11111011; // network setup indicator (LED 2) ON
+	//PORTB = 0xFF; // All leds off
+	//PORTD = 0b11111011; // network setup indicator (LED 2) ON
 	unsigned char payload[32];
 	unsigned char readme[32];
 	unsigned char tmp[32];
@@ -576,6 +610,7 @@ int main(void)
 	
 	while(1)
 	{
+		//PORTB = 0b01111111;
 		/*
 		Connect_Status = ESP8266_connected();
 		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP) {
@@ -597,6 +632,7 @@ int main(void)
 			_delay_ms(500);
 		}
 		*/
+		
 		/*
 		if (master && doSync) {
 			doSync = false;
@@ -605,8 +641,6 @@ int main(void)
 			char resetMessage[3] = { 0x05, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
 			ESP8266_Send(1, resetMessage);
 		}
-		
-		
 		if (!master && measureJitter == 2) {
 			// send UDP sync packet
 			char ping[3] = { 0x06, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
@@ -615,44 +649,59 @@ int main(void)
 		*/
 	
 		uint8_t len = 0;
-		memset(readme, 0, 32);
+		memset(readme, 0, 32);  
 		len = Read_Data(readme);
 		
 		unsigned char * pbuffer_cmd = strstr(readme, "+IPD");
-		if (len > 0 && pbuffer_cmd != NULL) {
+		if (len > 0) {
+			if (pbuffer_cmd != NULL) {
 
-			while (pbuffer_cmd != NULL) {
+				while (pbuffer_cmd != NULL) {
 
-				unsigned char *pbuffer_len = strstr(pbuffer_cmd, ":");
+					unsigned char *pbuffer_len = strstr(pbuffer_cmd, ":");
 
-				uint8_t startpos = (uint8_t)(pbuffer_cmd - readme);
-				uint8_t endpos = (uint8_t)(pbuffer_len - readme);
-
-				// make scratch space (tmp) for tokenizer
-				if (endpos > 31) break;  //endpos = 49;
-				strncpy(tmp, pbuffer_cmd, endpos);
-				tmp[endpos] = 0;
-
-				char * token = strtok(tmp, ",");    // +IPD "header" (ignored)
-				token = strtok(NULL, ":");
-
-				sscanf(token, "%d", &dLengde);     // data length	
-				if (dLengde > 31) break;  // safety; else just abort 
-
-				memcpy(payload, pbuffer_len+1, dLengde);
-
-				dKommando = payload[0];
-				dLengde = payload[1];
-
-				// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
-				strncpy(payload, pbuffer_len+1 +2, dLengde);
-				payload[dLengde] = 0;
-
-				handlePayload(dKommando, dLengde, payload);
+					uint8_t startpos = (uint8_t)(pbuffer_cmd - readme);
+					uint8_t endpos = (uint8_t)(pbuffer_len - readme);
+					
+					// make scratch space (tmp) for tokenizer
+					if (endpos > 31) break;  //endpos = 49;
+					strncpy(tmp, pbuffer_cmd, endpos);
+					tmp[endpos] = 0;
+					
+					char * token = strtok(tmp, ",");    // +IPD "header" (ignored)
+					
+					if (connectionMode == MULTIPLE) {
+						token = strtok(NULL, ",");
+						sscanf(token, "%d", &dKanal);  // channel ID
+					}
+					token = strtok(NULL, ":");
 				
-				pbuffer_cmd = strstr(pbuffer_len, "+IPD");
+				
+					sscanf(token, "%d", &dLengde);     // data length	
+					if (dLengde > 31) break;  // safety; else just abort 
+					
+					memcpy(payload, pbuffer_len+1, dLengde);
+				
+					dKommando = payload[0];
+					dLengde = payload[1];
+					
+					// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
+					strncpy(payload, pbuffer_len+1 +2, dLengde);
+					payload[dLengde] = 0;
+					
+					handlePayload(dKommando, dLengde, payload);
+					
+					{
+						unsigned char scratch[32];
+						memset(scratch, 0, 32);
+						sprintf(scratch, "kommando %d", dKommando);
+						USART_SendString(scratch);
+					}
+					
+					pbuffer_cmd = strstr(pbuffer_len, "+IPD");
+
+				}
 			}
-			
 		}
 
 	}
