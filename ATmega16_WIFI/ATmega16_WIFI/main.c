@@ -25,7 +25,8 @@
 #define MULTIPLE				1
 
 /* Message Mode */
-#define SHOW_REMOTE_ADDR		0
+#define HIDE_REMOTE_ADDR		0
+#define SHOW_REMOTE_ADDR		1
 
 /* Application Mode */
 #define NORMAL					0
@@ -37,7 +38,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.100.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.33.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -443,9 +444,10 @@ void handlePayload(char command, int len, char payload[]) {
 			break;
 			
 			/*
-			// assume delay = 50ms
+			// +IPD,1,4:[05][01]
+			// +IPD,1,4,192.168.160.7,4445:[05][01] <-- STAIP of master
 		case 0x05: // SYNC (reset counter)
-			if (master) master = false;
+			if (master) master = false; // master (sender) does NOT receive own UPD broadcasts
 		
 			if (measureJitter == 0) {
 				jitterTicks = 0;
@@ -468,7 +470,8 @@ void handlePayload(char command, int len, char payload[]) {
 			measureJitter = 3; // done
 			jitter = (jitterTicks / 2 * 225) % 225;
 			break;
-*/
+			*/
+			
 		default:
 			break;
 	}
@@ -541,11 +544,10 @@ void setupTimerISR()
 }
 
 int main(void)
-{
-	
+{	
 	_delay_ms(200);
 	
-	char _buffer[32];
+	//char _buffer[40];
 	uint8_t Connect_Status;
 	//uint8_t Sample = 0;
 	
@@ -570,7 +572,8 @@ int main(void)
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
 	sei();									/* Start global interrupt */
 
-	USART_SendString("HEI VELKOMMEN VERDEN");
+	if (master) USART_SendString("Master node");
+	else USART_SendString("Normal node");
 	
 	PORTB = 0b11000000; // setup indicator (LED 6)
 	while(!ESP8266_Begin());
@@ -586,7 +589,9 @@ int main(void)
 	if(ESP8266_connected() == ESP8266_NOT_CONNECTED_TO_AP) {
 		ESP8266_JoinAccessPoint(SSID, PASSWORD);
 	}
-	//ESP8266_MessageMode(SHOW_REMOTE_ADDR);		/* 0 = Normal Mode; 1 = Show Remote Host/Port */
+	
+	uint8_t messageMode = HIDE_REMOTE_ADDR;
+	if (messageMode == SHOW_REMOTE_ADDR) ESP8266_MessageMode(messageMode);		/* 0 = Normal Mode; 1 = Show Remote Host/Port */
 	
 	ESP8266_Start(0, DOMAIN, PORT);
 	PORTB = 0b11110000; // setup indicator (LED 6)
@@ -600,13 +605,17 @@ int main(void)
 	
 	//PORTB = 0xFF; // All leds off
 	//PORTD = 0b11111011; // network setup indicator (LED 2) ON
-	unsigned char payload[32];
-	unsigned char readme[32];
-	unsigned char tmp[32];
+	unsigned char payload[40];
+	unsigned char readme[40];
+	unsigned char tmp[40];
 	
 	uint8_t dKanal;
 	uint8_t dKommando;
 	uint8_t dLengde;
+	unsigned char remoteIP[20];
+	uint8_t remotePort;
+	
+	if (master) doSync = true; // test!!
 	
 	while(1)
 	{
@@ -633,14 +642,14 @@ int main(void)
 		}
 		*/
 		
-		/*
-		if (master && doSync) {
-			doSync = false;
+		if (master && connectionMode == MULTIPLE && doSync) {
+			doSync = false;  // only one time
 
 			// test: send UDP sync packet
 			char resetMessage[3] = { 0x05, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
 			ESP8266_Send(1, resetMessage);
 		}
+		/*
 		if (!master && measureJitter == 2) {
 			// send UDP sync packet
 			char ping[3] = { 0x06, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
@@ -649,7 +658,7 @@ int main(void)
 		*/
 	
 		uint8_t len = 0;
-		memset(readme, 0, 32);  
+		memset(readme, 0, 40);  
 		len = Read_Data(readme);
 		
 		unsigned char * pbuffer_cmd = strstr(readme, "+IPD");
@@ -664,7 +673,7 @@ int main(void)
 					uint8_t endpos = (uint8_t)(pbuffer_len - readme);
 					
 					// make scratch space (tmp) for tokenizer
-					if (endpos > 31) break;  //endpos = 49;
+					if (endpos > 39) break;  //endpos = 49;
 					strncpy(tmp, pbuffer_cmd, endpos);
 					tmp[endpos] = 0;
 					
@@ -674,14 +683,13 @@ int main(void)
 						token = strtok(NULL, ",");
 						sscanf(token, "%d", &dKanal);  // channel ID
 					}
+					
 					token = strtok(NULL, ":");
-				
-				
-					sscanf(token, "%d", &dLengde);     // data length	
-					if (dLengde > 31) break;  // safety; else just abort 
+					sscanf(token, "%d", &dLengde);     // data length
+					if (dLengde > 39) break;  // safety; else just abort
 					
 					memcpy(payload, pbuffer_len+1, dLengde);
-				
+					
 					dKommando = payload[0];
 					dLengde = payload[1];
 					
@@ -691,18 +699,17 @@ int main(void)
 					
 					handlePayload(dKommando, dLengde, payload);
 					
-					{
-						unsigned char scratch[32];
-						memset(scratch, 0, 32);
-						sprintf(scratch, "kommando %d", dKommando);
-						USART_SendString(scratch);
-					}
+					//{
+						//unsigned char scratch[32];
+						//memset(scratch, 0, 32);
+						//sprintf(scratch, "kommando %d", dKommando);
+						//USART_SendString(scratch);
+					//}
 					
 					pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 
 				}
 			}
 		}
-
 	}
 }
