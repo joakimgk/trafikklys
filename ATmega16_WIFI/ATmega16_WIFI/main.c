@@ -38,7 +38,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.33.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.0.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -590,7 +590,7 @@ int main(void)
 		ESP8266_JoinAccessPoint(SSID, PASSWORD);
 	}
 	
-	uint8_t messageMode = HIDE_REMOTE_ADDR;
+	uint8_t messageMode = SHOW_REMOTE_ADDR;
 	if (messageMode == SHOW_REMOTE_ADDR) ESP8266_MessageMode(messageMode);		/* 0 = Normal Mode; 1 = Show Remote Host/Port */
 	
 	ESP8266_Start(0, DOMAIN, PORT);
@@ -612,7 +612,7 @@ int main(void)
 	uint8_t dKanal;
 	uint8_t dKommando;
 	uint8_t dLengde;
-	unsigned char remoteIP[20];
+	char remoteIP[20];
 	uint8_t remotePort;
 	
 	if (master) doSync = true; // test!!
@@ -646,7 +646,7 @@ int main(void)
 			doSync = false;  // only one time
 
 			// test: send UDP sync packet
-			char resetMessage[3] = { 0x05, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
+			char resetMessage[4] = { 0x05, 0x01, 0x01, 0x03 }; // payload 0 (should support empty payload, length = 0, but don't yet)
 			ESP8266_Send(1, resetMessage);
 		}
 		/*
@@ -684,9 +684,17 @@ int main(void)
 						sscanf(token, "%d", &dKanal);  // channel ID
 					}
 					
-					token = strtok(NULL, ":");
+					if (messageMode == SHOW_REMOTE_ADDR) token = strtok(NULL, ",");
+					else token = strtok(NULL, ":");
 					sscanf(token, "%d", &dLengde);     // data length
 					if (dLengde > 39) break;  // safety; else just abort
+					
+					if (messageMode == SHOW_REMOTE_ADDR) {
+						token = strtok(NULL, ",");
+						sscanf(token, "%s", remoteIP);     // remote IP
+						token = strtok(NULL, ":");
+						sscanf(token, "%d", &remotePort);  // remote port
+					}
 					
 					memcpy(payload, pbuffer_len+1, dLengde);
 					
@@ -700,9 +708,9 @@ int main(void)
 					handlePayload(dKommando, dLengde, payload);
 					
 					//{
-						//unsigned char scratch[32];
+						//char scratch[32];
 						//memset(scratch, 0, 32);
-						//sprintf(scratch, "kommando %d", dKommando);
+						//sprintf(scratch, "K %d IP %s", dKommando, remoteIP);
 						//USART_SendString(scratch);
 					//}
 					
