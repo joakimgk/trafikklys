@@ -691,9 +691,9 @@ int main(void)
 					
 					if (messageMode == SHOW_REMOTE_ADDR) {
 						token = strtok(NULL, ",");
-						sscanf(token, "%s", remoteIP);     // remote IP
+						//sscanf(token, "%s", remoteIP);     // remote IP
 						token = strtok(NULL, ":");
-						sscanf(token, "%d", &remotePort);  // remote port
+						//sscanf(token, "%d", &remotePort);  // remote port
 					}
 					
 					memcpy(payload, pbuffer_len+1, dLengde);
