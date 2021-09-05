@@ -612,7 +612,7 @@ int main(void)
 	uint8_t dKanal;
 	uint8_t dKommando;
 	uint8_t dLengde;
-	char remoteIP[20];
+	uint8_t IP1, IP2, IP3, IP4;
 	uint8_t remotePort;
 	
 	if (master) doSync = true; // test!!
@@ -681,19 +681,26 @@ int main(void)
 					
 					if (connectionMode == MULTIPLE) {
 						token = strtok(NULL, ",");
-						sscanf(token, "%d", &dKanal);  // channel ID
+						dKanal = atoi(token);  // channel ID
 					}
 					
 					if (messageMode == SHOW_REMOTE_ADDR) token = strtok(NULL, ",");
 					else token = strtok(NULL, ":");
-					sscanf(token, "%d", &dLengde);     // data length
+					dLengde = atoi(token);     // data length
 					if (dLengde > 39) break;  // safety; else just abort
 					
 					if (messageMode == SHOW_REMOTE_ADDR) {
-						token = strtok(NULL, ",");
-						//sscanf(token, "%s", remoteIP);     // remote IP
+						token = strtok(NULL, ".");
+						IP1 = atoi(token);
+						token = strtok(NULL, ".");
+						IP2 = atoi(token);
+						token = strtok(NULL, ".");
+						IP3 = atoi(token);
+						token = strtok(NULL, ".");
+						IP4 = atoi(token);
+						
 						token = strtok(NULL, ":");
-						//sscanf(token, "%d", &remotePort);  // remote port
+						remotePort = atoi(token);  // remote port
 					}
 					
 					memcpy(payload, pbuffer_len+1, dLengde);
@@ -707,12 +714,12 @@ int main(void)
 					
 					handlePayload(dKommando, dLengde, payload);
 					
-					//{
-						//char scratch[32];
-						//memset(scratch, 0, 32);
-						//sprintf(scratch, "K %d IP %s", dKommando, remoteIP);
-						//USART_SendString(scratch);
-					//}
+					{
+						char scratch[32];
+						memset(scratch, 0, 32);
+						sprintf(scratch, "IP: %d.%d.%d.%d", IP1, IP2, IP3, IP4);
+						USART_SendString(scratch);
+					}
 					
 					pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 
