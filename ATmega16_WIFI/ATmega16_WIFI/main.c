@@ -331,6 +331,23 @@ uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, ch
 	return ESP8266_RESPONSE_FINISHED;
 }
 
+// If you want to send data to any other UDP terminals, please set the IP and port of this terminal.
+uint8_t ESP8266_Send_UDP(char* Data, char* Domain, uint8_t Port)
+{
+	char _atCommand[60];
+	memset(_atCommand, 0, 60);
+	sprintf(_atCommand, "AT+CIPSEND=%d, \"%s\", %d", (strlen(Data)+2), Domain, Port);
+	_atCommand[59] = 0;
+	SendATandExpectResponse(_atCommand, "\r\nOK\r\n>");
+	if(!SendATandExpectResponse(Data, "\r\nSEND OK\r\n"))
+	{
+		if(Response_Status == ESP8266_RESPONSE_TIMEOUT)
+		return ESP8266_RESPONSE_TIMEOUT;
+		return ESP8266_RESPONSE_ERROR;
+	}
+	return ESP8266_RESPONSE_FINISHED;
+}
+// Otherwise, set connection number of existing connection (TCP or UDP)
 uint8_t ESP8266_Send(uint8_t _ConnectionNumber, char* Data)
 {
 	char _atCommand[20];
@@ -390,11 +407,14 @@ volatile uint8_t tempo = 25;
 volatile uint8_t ticks = 0;
 
 volatile uint8_t ticks2 = 0;
-volatile uint16_t sync = 255 * 10;  // sync hvert 10. sekund (NB! uavhengig av `tempo`)
+uint16_t sync = 255 * 10;  // sync hvert 10. sekund (NB! uavhengig av `tempo`)
+uint16_t syncTimeout = 255 * 10 * 5;
 volatile bool doSync = false;
+volatile bool doResponse = false;
 
+volatile uint16_t ticksSinceSync = 0;
 volatile uint8_t measureJitter = 0;  // 0: expired, 1: start, 2: sending, 3: done (for a while)
-volatile uint8_t jitterTicks = 0;
+volatile uint16_t jitterTicks = 0;
 volatile uint16_t jitter = 0;
 
 volatile bool master = false;
@@ -443,10 +463,10 @@ void handlePayload(char command, int len, char payload[]) {
 			step = 0;  // og RESET!
 			break;
 			
-			/*
 			// +IPD,1,4:[05][01]
 			// +IPD,1,4,192.168.160.7,4445:[05][01] <-- STAIP of master
-		case 0x05: // SYNC (reset counter)
+		case 0x05: // SYNC
+			ticksSinceSync = 0; // reset counter
 			if (master) master = false; // master (sender) does NOT receive own UPD broadcasts
 		
 			if (measureJitter == 0) {
@@ -455,22 +475,27 @@ void handlePayload(char command, int len, char payload[]) {
 			}
 			if (measureJitter == 3) {
 				TCNT1 = jitter;
-				measureJitter = 0;  // get ready for next round
+				measureJitter = 0;  // get ready for next round (next sync packet)
 			}
 			break;
 			
+			/*
 		case 0x06:  // PING REQUEST
 			if (master) {
-				// determine sender IP
+				// determine sender IP  // TODO! Master needs to support MULTIPLE (a queue?) of IPs (pings) to respond to!!
 				// send ping response (0x07)
+				////doResponse = true;  // remove when we have actual queue of IPs/pings: Non-empty queue is handled in main loop
 			}
 			break;
+			*/
 			
 		case 0x07: // PING RESPONSE 
-			measureJitter = 3; // done
-			jitter = (jitterTicks / 2 * 225) % 225;
+			if (!master) {
+				jitter = (jitterTicks / 2 * 225) % 225;
+				measureJitter = 3; // done
+				// NB! We don't SET the jitter adjustment here/now; we wait until the NEXT sync packet arrives
+			}
 			break;
-			*/
 			
 		default:
 			break;
@@ -504,12 +529,16 @@ ISR (TIMER1_COMPA_vect)
 		PORTB = (~(program[step++] | mem));  // *(program + step++);
 	}
 	
-	/*
 	if (!master) {
 		if (measureJitter == 2) jitterTicks++;
 		if (measureJitter == 1) {
 			jitterTicks = 0;
 			measureJitter = 2;  // send ping ASAP
+		}
+		if (measureJitter == 0) {
+			if (ticksSinceSync++ > syncTimeout) {
+				if (rand() < 0.3) master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know
+			}
 		}
 		
 	} else {
@@ -517,11 +546,10 @@ ISR (TIMER1_COMPA_vect)
 		if (ticks2++ >= sync) {
 			ticks2 = 0;
 			doSync = true;
-			} else {
+		} else {
 			doSync = false;
 		}
 	}
-	*/
 	
 	SREG = oldsrg;
 }
@@ -596,6 +624,7 @@ int main(void)
 	ESP8266_Start(0, DOMAIN, PORT);
 	PORTB = 0b11110000; // setup indicator (LED 6)
 	
+	// TRENGER VI GJØRE DETTE?? BRUKER VI EGENTLIG UDP "MOT SERVER"??
 	if (connectionMode == MULTIPLE) {
 		ESP8266_QueryIPAddress();
 		// UDP init på port 4445 (on all addresses)
@@ -608,13 +637,18 @@ int main(void)
 	unsigned char payload[40];
 	unsigned char readme[40];
 	unsigned char tmp[40];
+	unsigned char remoteAddress[32];
 	
 	uint8_t dKanal;
 	uint8_t dKommando;
 	uint8_t dLengde;
-	uint8_t IP1, IP2, IP3, IP4;
+	uint8_t IP1 = 0, IP2 = 0, IP3 = 0, IP4 = 0;
 	uint8_t remotePort;
 	
+	char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
+	char pingMessage[3] = { 0x06, 0x01, 0xFF };
+	char pingResponse[3] = { 0x07, 0x01, 0xFF };
+
 	if (master) doSync = true; // test!!
 	
 	while(1)
@@ -644,18 +678,18 @@ int main(void)
 		
 		if (master && connectionMode == MULTIPLE && doSync) {
 			doSync = false;  // only one time
-
-			// test: send UDP sync packet
-			char resetMessage[4] = { 0x05, 0x01, 0x01, 0x03 }; // payload 0 (should support empty payload, length = 0, but don't yet)
-			ESP8266_Send(1, resetMessage);
+			ESP8266_Send(1, syncMessage); 	// send UDP sync message (is this UDP broadcast?)
 		}
-		/*
 		if (!master && measureJitter == 2) {
-			// send UDP sync packet
-			char ping[3] = { 0x06, 0x01, 0x00 }; // payload 0 (should support empty payload, length = 0, but don't yet)
-			ESP8266_Send(1, ping);
+			// here, we HAVE received a 0x05 sync packet (from master)
+			// send UDP sync packet in return. This is !master, so we only expect to get ONE source of these messages (not many, at the same time)
+			// thus, we can rely on the "last read" IP to be the recipient (we also only read the address off UDP packets, not those from server/TCP)
+			if (IP1 != 0) {
+				memset(remoteAddress, 0, 32);
+				sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
+				ESP8266_Send_UDP(pingMessage, remoteAddress, remotePort);
+			}
 		}
-		*/
 	
 		uint8_t len = 0;
 		memset(readme, 0, 40);  
@@ -687,9 +721,9 @@ int main(void)
 					if (messageMode == SHOW_REMOTE_ADDR) token = strtok(NULL, ",");
 					else token = strtok(NULL, ":");
 					dLengde = atoi(token);     // data length
-					if (dLengde > 39) break;  // safety; else just abort
+					if (dLengde > 39) break;   // safety; else just abort
 					
-					if (messageMode == SHOW_REMOTE_ADDR) {
+					if (messageMode == SHOW_REMOTE_ADDR && dKanal == 1) {  // only read address from UDP packets (other devices, not server!)
 						token = strtok(NULL, ".");
 						IP1 = atoi(token);
 						token = strtok(NULL, ".");
@@ -712,14 +746,22 @@ int main(void)
 					strncpy(payload, pbuffer_len+1 +2, dLengde);
 					payload[dLengde] = 0;
 					
-					handlePayload(dKommando, dLengde, payload);
-					
-					{
-						char scratch[32];
-						memset(scratch, 0, 32);
-						sprintf(scratch, "IP: %d.%d.%d.%d", IP1, IP2, IP3, IP4);
-						USART_SendString(scratch);
+					if (master && dKanal == 1 && dKommando == 0x06) {
+						memset(remoteAddress, 0, 32);
+						sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
+						// send back response on ping, to same device (address)...
+						ESP8266_Send_UDP(pingResponse, remoteAddress, remotePort);
+						
+					} else {
+						handlePayload(dKommando, dLengde, payload);
 					}
+					
+					//{
+						//char scratch[32];
+						//memset(scratch, 0, 32);
+						//sprintf(scratch, "IP: %d.%d.%d.%d", IP1, IP2, IP3, IP4);
+						//USART_SendString(scratch);
+					//}
 					
 					pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 
