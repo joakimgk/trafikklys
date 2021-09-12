@@ -38,7 +38,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.0.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.233.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -392,6 +392,9 @@ uint16_t Read_Data(char* _buffer)
 # define SLOW 3
 # define RAPID 5
 
+uint8_t Running_Status = 0;
+//volatile uint8_t Connect_Status = 0;
+
 // program buffers
 volatile uint8_t program[BUFFER_LENGTH];
 volatile uint8_t rec_program[BUFFER_LENGTH];
@@ -407,8 +410,14 @@ volatile uint8_t tempo = 25;
 volatile uint8_t ticks = 0;
 
 volatile uint8_t ticks2 = 0;
-uint16_t sync = 255 * 10;  // sync hvert 10. sekund (NB! uavhengig av `tempo`)
-uint16_t syncTimeout = 255 * 10 * 5;
+
+// status indicator rate
+uint8_t tempoS = 10;
+uint8_t ticksS = 0;
+uint8_t blinkState = 0;
+
+//uint16_t sync = 255 * 10;  // sync hvert 10. sekund (NB! uavhengig av `tempo`)
+//uint16_t syncTimeout = 255 * 10 * 5;
 volatile bool doSync = false;
 volatile bool doResponse = false;
 
@@ -418,11 +427,6 @@ volatile uint16_t jitterTicks = 0;
 volatile uint16_t jitter = 0;
 
 volatile bool master = false;
-void swapArrays(uint8_t **a, uint8_t **b){
-	uint8_t *temp = *a;
-	*a = *b;
-	*b = temp;
-}
 
 void handlePayload(char command, int len, char payload[]) {
 	
@@ -463,6 +467,7 @@ void handlePayload(char command, int len, char payload[]) {
 			step = 0;  // og RESET!
 			break;
 			
+			/*
 			// +IPD,1,4:[05][01]
 			// +IPD,1,4,192.168.160.7,4445:[05][01] <-- STAIP of master
 		case 0x05: // SYNC
@@ -478,6 +483,7 @@ void handlePayload(char command, int len, char payload[]) {
 				measureJitter = 0;  // get ready for next round (next sync packet)
 			}
 			break;
+			*/
 			
 			/*
 		case 0x06:  // PING REQUEST
@@ -489,6 +495,8 @@ void handlePayload(char command, int len, char payload[]) {
 			break;
 			*/
 			
+			/*
+			
 		case 0x07: // PING RESPONSE 
 			if (!master) {
 				jitter = (jitterTicks / 2 * 225) % 225;
@@ -496,6 +504,7 @@ void handlePayload(char command, int len, char payload[]) {
 				// NB! We don't SET the jitter adjustment here/now; we wait until the NEXT sync packet arrives
 			}
 			break;
+			*/
 			
 		default:
 			break;
@@ -520,36 +529,66 @@ ISR (TIMER1_COMPA_vect)
 	uint8_t oldsrg = SREG;
 	cli();
 	
+	/*
+	// fixed-interval update of status LEDs (for steady-rate blinking)
+	if (ticksS++ >= tempoS) {
+		ticksS = 0;
+		// NB! Don't increment program! TODO: Can we set status LEDs without also setting program LEDs?
+		uint8_t masterState = master;
+		if (!master && ticksSinceSync > syncTimeout) masterState = blinkState;
+		
+		
+		//uint8_t x = (~(program[step] | (Running_Status << 7) | (Connect_Status << 6) | (masterState << 5)));  // <<4 LED4, <<3 LED3, etc
+		PORTB = (~(program[step] | (1 << 7) | (Connect_Status << 6) | (masterState << 5)));
+	}*/
+	
 	if (ticks++ >= tempo) {
 		ticks = 0;
 		
 		if ((step >= length) || (step == BUFFER_LENGTH)) step = 0;
 	
-		uint8_t mem = (~PORTB & 0b11111000);
-		PORTB = (~(program[step++] | mem));  // *(program + step++);
-	}
-	
-	if (!master) {
-		if (measureJitter == 2) jitterTicks++;
-		if (measureJitter == 1) {
-			jitterTicks = 0;
-			measureJitter = 2;  // send ping ASAP
-		}
-		if (measureJitter == 0) {
-			if (ticksSinceSync++ > syncTimeout) {
-				if (rand() < 0.3) master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know
-			}
-		}
+		//uint8_t mem = (~PORTB & 0b11111000);
+		//PORTB = (~(program[step++]) | mem);  // *(program + step++);
 		
-	} else {
-	
-		if (ticks2++ >= sync) {
-			ticks2 = 0;
-			doSync = true;
-		} else {
-			doSync = false;
-		}
+		//uint8_t masterState = master;
+		//if (!master && ticksSinceSync > syncTimeout) masterState = blinkState;
+		//uint8_t cs = (Connect_Status == ESP8266_CONNECTED_TO_AP ? 1 : 0);
+		
+		PORTB = (~(program[step++] | (1 << 7) | (1 << 6) | (Running_Status << 5) | ((master ? 1 : 0) << 4)));
+
 	}
+	
+	//if (!master) {
+		///*
+		//if (measureJitter == 2) jitterTicks++;
+		//if (jitterTicks > 65530) {
+			//USART_SendString("jitterTicks maxed out");
+			//jitterTicks = 65530;
+		//}
+		//
+		//if (measureJitter == 1) {
+			//jitterTicks = 0;
+			//measureJitter = 2;  // send ping ASAP
+		//}
+		//*/
+		//if (measureJitter == 0) {
+			//if (ticksSinceSync > syncTimeout) {
+				////if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times
+					////master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know
+				////}
+				//ticksSinceSync = 0; // reset
+			//} else ticksSinceSync++;
+		//}
+		//
+	//} /*else {
+	//
+		//if (ticks2++ >= sync) {
+			//ticks2 = 0;
+			//doSync = true;
+		//} else {
+			//doSync = false;
+		//}
+	//}*/
 	
 	SREG = oldsrg;
 }
@@ -576,7 +615,7 @@ int main(void)
 	_delay_ms(200);
 	
 	//char _buffer[40];
-	uint8_t Connect_Status;
+	//uint8_t Connect_Status;
 	//uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
@@ -587,9 +626,11 @@ int main(void)
 	DDRC = 0x00; // set PORTC for input
 	PORTC = 0xFF;
 
-	program[0] = 0b00000111;
-	program[1] = 0b00000000;
-	length = 2;
+	program[0] = 0b00000100;
+	program[1] = 0b00000010;
+	program[2] = 0b00000001;
+	program[3] = 0b00000010;
+	length = 4;
 	
 	step = 0;
 	
@@ -603,10 +644,10 @@ int main(void)
 	if (master) USART_SendString("Master node");
 	else USART_SendString("Normal node");
 	
-	PORTB = 0b11000000; // setup indicator (LED 6)
+	//PORTB = 0b11000000; // setup indicator (LED 6)
 	while(!ESP8266_Begin());
 	
-	PORTB = 0b11100000; // setup indicator (LED 6)
+	//PORTB = 0b11100000; // setup indicator (LED 6)
 	ESP8266_CloseAllConnections();
 	ESP8266_WIFIMode(BOTH_STATION_AND_ACCESPOINT);/* 3 = Both (AP and STA) */
 	ESP8266_ApplicationMode(NORMAL);		/* 0 = Normal Mode; 1 = Transperant Mode */
@@ -622,7 +663,7 @@ int main(void)
 	if (messageMode == SHOW_REMOTE_ADDR) ESP8266_MessageMode(messageMode);		/* 0 = Normal Mode; 1 = Show Remote Host/Port */
 	
 	ESP8266_Start(0, DOMAIN, PORT);
-	PORTB = 0b11110000; // setup indicator (LED 6)
+	//PORTB = 0b11110000; // setup indicator (LED 6)
 	
 	// TRENGER VI GJØRE DETTE?? BRUKER VI EGENTLIG UDP "MOT SERVER"??
 	if (connectionMode == MULTIPLE) {
@@ -637,7 +678,7 @@ int main(void)
 	unsigned char payload[40];
 	unsigned char readme[40];
 	unsigned char tmp[40];
-	unsigned char remoteAddress[32];
+	//unsigned char remoteAddress[32];
 	
 	uint8_t dKanal;
 	uint8_t dKommando;
@@ -645,37 +686,30 @@ int main(void)
 	uint8_t IP1 = 0, IP2 = 0, IP3 = 0, IP4 = 0;
 	uint8_t remotePort;
 	
-	char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
-	char pingMessage[3] = { 0x06, 0x01, 0xFF };
-	char pingResponse[3] = { 0x07, 0x01, 0xFF };
+	//char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
+	//char pingMessage[3] = { 0x06, 0x01, 0xFF };
+	//char pingResponse[3] = { 0x07, 0x01, 0xFF };
 
 	if (master) doSync = true; // test!!
+	Running_Status = 1;
+	//Connect_Status = ESP8266_connected();
 	
 	while(1)
 	{
-		//PORTB = 0b01111111;
-		/*
-		Connect_Status = ESP8266_connected();
-		if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP) {
-		ESP8266_JoinAccessPoint(SSID, PASSWORD);
-		}
-		if(Connect_Status == ESP8266_CONNECTED_TO_AP || Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED) {
-		ESP8266_Start(0, DOMAIN, PORT);
-			ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
-		}
-		*/
+		//if (programCounter++ > 65000) {
+			//programCounter = 0;
+			//
+			////Connect_Status = ESP8266_connected();
+			////if(Connect_Status == ESP8266_NOT_CONNECTED_TO_AP) {
+				////ESP8266_JoinAccessPoint(SSID, PASSWORD);
+			////}
+			////if(Connect_Status == ESP8266_CONNECTED_TO_AP || Connect_Status == ESP8266_TRANSMISSION_DISCONNECTED) {
+				////ESP8266_Start(0, DOMAIN, PORT);
+				////ESP8266_StartUDP(1, UDP_DOMAIN, UDP_PORT, UDP_PORT, 2);
+			////}
+		//}
 		
 		/*
-		if (!tempoSent && Sample++ > 5) {
-			memset(_buffer, 0, 150);
-			sprintf(_buffer, "KLAR FOR TEMPO");
-			ESP8266_Send(_buffer);
-			
-			tempoSent = true;
-			_delay_ms(500);
-		}
-		*/
-		
 		if (master && connectionMode == MULTIPLE && doSync) {
 			doSync = false;  // only one time
 			ESP8266_Send(1, syncMessage); 	// send UDP sync message (is this UDP broadcast?)
@@ -690,6 +724,7 @@ int main(void)
 				ESP8266_Send_UDP(pingMessage, remoteAddress, remotePort);
 			}
 		}
+		*/
 	
 		uint8_t len = 0;
 		memset(readme, 0, 40);  
@@ -746,6 +781,7 @@ int main(void)
 					strncpy(payload, pbuffer_len+1 +2, dLengde);
 					payload[dLengde] = 0;
 					
+					/*
 					if (master && dKanal == 1 && dKommando == 0x06) {
 						memset(remoteAddress, 0, 32);
 						sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
@@ -755,6 +791,8 @@ int main(void)
 					} else {
 						handlePayload(dKommando, dLengde, payload);
 					}
+					*/
+					handlePayload(dKommando, dLengde, payload);
 					
 					//{
 						//char scratch[32];
