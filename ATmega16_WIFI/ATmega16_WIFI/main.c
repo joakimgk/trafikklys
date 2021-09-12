@@ -412,12 +412,12 @@ volatile uint8_t ticks = 0;
 volatile uint8_t ticks2 = 0;
 
 // status indicator rate
-uint8_t tempoS = 10;
+uint8_t tempoS = 120;
 uint8_t ticksS = 0;
 uint8_t blinkState = 0;
 
-//uint16_t sync = 255 * 10;  // sync hvert 10. sekund (NB! uavhengig av `tempo`)
-//uint16_t syncTimeout = 255 * 10 * 5;
+uint16_t sync = 255 * 10;  // sync hvert 10. sekund (NB! uavhengig av `tempo`)
+uint16_t syncTimeout = 100;
 volatile bool doSync = false;
 volatile bool doResponse = false;
 
@@ -430,11 +430,9 @@ volatile bool master = false;
 
 void handlePayload(char command, int len, char payload[]) {
 	
-	uint8_t mem = (~PORTB & 0b00000111);
-	//PORTB = (~((command << 3) | mem));
 	uint16_t test;
-
 	uint8_t i;
+	
 	switch (command) {
 		case 0x01:  // TEMPO
 			test = payload[0];
@@ -524,23 +522,29 @@ ISR (USART_RXC_vect, ISR_BLOCK)
 	SREG = oldsrg;
 }
 
+uint8_t invert(uint8_t bit) {
+	return (bit == 1 ? 0 : 1);
+}
+
 ISR (TIMER1_COMPA_vect)
 {
 	uint8_t oldsrg = SREG;
 	cli();
 	
-	/*
+	uint8_t newState = PORTB;
+	
 	// fixed-interval update of status LEDs (for steady-rate blinking)
 	if (ticksS++ >= tempoS) {
 		ticksS = 0;
-		// NB! Don't increment program! TODO: Can we set status LEDs without also setting program LEDs?
+		
+		if (blinkState == 1) blinkState = 0;
+		else blinkState = 1;
+		
 		uint8_t masterState = master;
 		if (!master && ticksSinceSync > syncTimeout) masterState = blinkState;
 		
-		
-		//uint8_t x = (~(program[step] | (Running_Status << 7) | (Connect_Status << 6) | (masterState << 5)));  // <<4 LED4, <<3 LED3, etc
-		PORTB = (~(program[step] | (1 << 7) | (Connect_Status << 6) | (masterState << 5)));
-	}*/
+		newState = (newState & ~(1 << 5) & ~(1 << 4)) | (invert(Running_Status) << 5) | (invert(masterState) << 4);
+	}
 	
 	if (ticks++ >= tempo) {
 		ticks = 0;
@@ -549,46 +553,40 @@ ISR (TIMER1_COMPA_vect)
 	
 		//uint8_t mem = (~PORTB & 0b11111000);
 		//PORTB = (~(program[step++]) | mem);  // *(program + step++);
-		
-		//uint8_t masterState = master;
-		//if (!master && ticksSinceSync > syncTimeout) masterState = blinkState;
-		//uint8_t cs = (Connect_Status == ESP8266_CONNECTED_TO_AP ? 1 : 0);
-		
-		PORTB = (~(program[step++] | (1 << 7) | (1 << 6) | (Running_Status << 5) | ((master ? 1 : 0) << 4)));
-
+		newState = (newState & ~7) | (program[step++] ^ 7);
 	}
+	PORTB = newState;
 	
-	//if (!master) {
-		///*
-		//if (measureJitter == 2) jitterTicks++;
-		//if (jitterTicks > 65530) {
-			//USART_SendString("jitterTicks maxed out");
-			//jitterTicks = 65530;
-		//}
-		//
-		//if (measureJitter == 1) {
-			//jitterTicks = 0;
-			//measureJitter = 2;  // send ping ASAP
-		//}
-		//*/
-		//if (measureJitter == 0) {
-			//if (ticksSinceSync > syncTimeout) {
-				////if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times
-					////master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know
-				////}
-				//ticksSinceSync = 0; // reset
-			//} else ticksSinceSync++;
-		//}
-		//
-	//} /*else {
-	//
-		//if (ticks2++ >= sync) {
-			//ticks2 = 0;
-			//doSync = true;
-		//} else {
-			//doSync = false;
-		//}
-	//}*/
+	if (!master) {
+		/*
+		if (measureJitter == 2) jitterTicks++;
+		if (jitterTicks > 65530) {
+			USART_SendString("jitterTicks maxed out");
+			jitterTicks = 65530;
+		}
+		
+		if (measureJitter == 1) {
+			jitterTicks = 0;
+			measureJitter = 2;  // send ping ASAP
+		}
+		*/
+		if (measureJitter == 0) {
+			if (ticksSinceSync > syncTimeout) {
+				if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times
+					master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know
+				}
+			} else ticksSinceSync++;
+		}
+		
+	} /*else {
+	
+		if (ticks2++ >= sync) {
+			ticks2 = 0;
+			doSync = true;
+		} else {
+			doSync = false;
+		}
+	}*/
 	
 	SREG = oldsrg;
 }
@@ -619,12 +617,14 @@ int main(void)
 	//uint8_t Sample = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
-	DDRD = 0xFF;
-	PORTB = 0b11011111; // crash indicator (LED 5)
-	PORTD = 0b11111111; // network setup indicator (LED 2) OFF
+	//DDRD = 0xFF;
+	//PORTB = 0b11011111; // crash indicator (LED 5)
+	//PORTD = 0b11111111; // network setup indicator (LED 2) OFF
 	
-	DDRC = 0x00; // set PORTC for input
-	PORTC = 0xFF;
+	PORTB = 0b11111111;  // init {all leds off)
+	
+	//DDRC = 0x00; // set PORTC for input
+	//PORTC = 0xFF;
 
 	program[0] = 0b00000100;
 	program[1] = 0b00000010;
@@ -635,7 +635,7 @@ int main(void)
 	step = 0;
 	
 	cli();
-	PORTB = 0b10000000; // setup indicator (LED 6)
+	//PORTB = 0b10000000; // setup indicator (LED 6)
 	setupTimerISR();
 
 	USART_Init(115200);						/* Initiate USART with 115200 baud rate */
