@@ -38,7 +38,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.233.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.92.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -331,6 +331,7 @@ uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, ch
 	return ESP8266_RESPONSE_FINISHED;
 }
 
+/*
 // If you want to send data to any other UDP terminals, please set the IP and port of this terminal.
 uint8_t ESP8266_Send_UDP(char* Data, char* Domain, uint8_t Port)
 {
@@ -347,6 +348,7 @@ uint8_t ESP8266_Send_UDP(char* Data, char* Domain, uint8_t Port)
 	}
 	return ESP8266_RESPONSE_FINISHED;
 }
+*/
 // Otherwise, set connection number of existing connection (TCP or UDP)
 uint8_t ESP8266_Send(uint8_t _ConnectionNumber, char* Data)
 {
@@ -543,7 +545,7 @@ ISR (TIMER1_COMPA_vect)
 		uint8_t masterState = master;
 		if (!master && ticksSinceSync > syncTimeout) masterState = blinkState;
 		
-		newState = (newState & ~(1 << 5) & ~(1 << 4)) | (invert(Running_Status) << 5) | (invert(masterState) << 4);
+		newState = (newState & ~(1 << 3) & ~(1 << 4)) | (Running_Status << 3) | (masterState << 4);
 	}
 	
 	if (ticks++ >= tempo) {
@@ -553,7 +555,7 @@ ISR (TIMER1_COMPA_vect)
 	
 		//uint8_t mem = (~PORTB & 0b11111000);
 		//PORTB = (~(program[step++]) | mem);  // *(program + step++);
-		newState = (newState & ~7) | (program[step++] ^ 7);
+		newState = (newState & ~0b00000111) | (program[step++] ^ 0b00000111);
 	}
 	PORTB = newState;
 	
@@ -570,13 +572,15 @@ ISR (TIMER1_COMPA_vect)
 			measureJitter = 2;  // send ping ASAP
 		}
 		*/
+		/*
 		if (measureJitter == 0) {
 			if (ticksSinceSync > syncTimeout) {
-				if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times
-					master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know
-				}
+				//if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times
+				//	master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know
+				//}
 			} else ticksSinceSync++;
 		}
+		*/
 		
 	} /*else {
 	
@@ -781,17 +785,15 @@ int main(void)
 					strncpy(payload, pbuffer_len+1 +2, dLengde);
 					payload[dLengde] = 0;
 					
-					/*
-					if (master && dKanal == 1 && dKommando == 0x06) {
-						memset(remoteAddress, 0, 32);
-						sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
-						// send back response on ping, to same device (address)...
-						ESP8266_Send_UDP(pingResponse, remoteAddress, remotePort);
-						
-					} else {
-						handlePayload(dKommando, dLengde, payload);
-					}
-					*/
+					//if (master && dKanal == 1 && dKommando == 0x06) {
+						//memset(remoteAddress, 0, 32);
+						//sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
+						//// send back response on ping, to same device (address)...
+						//ESP8266_Send_UDP(pingResponse, remoteAddress, remotePort);
+						//
+					//} else {
+						//handlePayload(dKommando, dLengde, payload);
+					//}
 					handlePayload(dKommando, dLengde, payload);
 					
 					//{
