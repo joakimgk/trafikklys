@@ -38,7 +38,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.92.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.144.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define API_WRITE_KEY		"C7JFHZY54GLCJY38"
 #define CHANNEL_ID			"119922"
@@ -331,14 +331,17 @@ uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, ch
 	return ESP8266_RESPONSE_FINISHED;
 }
 
-/*
 // If you want to send data to any other UDP terminals, please set the IP and port of this terminal.
 uint8_t ESP8266_Send_UDP(char* Data, char* Domain, uint8_t Port)
 {
 	char _atCommand[60];
 	memset(_atCommand, 0, 60);
+	//sprintf(_atCommand, "AT+CIPSEND=%d", (strlen(Data)+2));
 	sprintf(_atCommand, "AT+CIPSEND=%d, \"%s\", %d", (strlen(Data)+2), Domain, Port);
 	_atCommand[59] = 0;
+	USART_SendString(_atCommand);
+	
+	/*
 	SendATandExpectResponse(_atCommand, "\r\nOK\r\n>");
 	if(!SendATandExpectResponse(Data, "\r\nSEND OK\r\n"))
 	{
@@ -346,9 +349,10 @@ uint8_t ESP8266_Send_UDP(char* Data, char* Domain, uint8_t Port)
 		return ESP8266_RESPONSE_TIMEOUT;
 		return ESP8266_RESPONSE_ERROR;
 	}
+	*/
 	return ESP8266_RESPONSE_FINISHED;
 }
-*/
+
 // Otherwise, set connection number of existing connection (TCP or UDP)
 uint8_t ESP8266_Send(uint8_t _ConnectionNumber, char* Data)
 {
@@ -545,7 +549,8 @@ ISR (TIMER1_COMPA_vect)
 		uint8_t masterState = master;
 		if (!master && ticksSinceSync > syncTimeout) masterState = blinkState;
 		
-		newState = (newState & ~(1 << 3) & ~(1 << 4)) | (Running_Status << 3) | (masterState << 4);
+		
+		newState = (newState & ~(1 << 3) & ~(1 << 4)) | (Running_Status << 3) | (masterState << 4);  // Running_Status 0 is OFF
 	}
 	
 	if (ticks++ >= tempo) {
@@ -723,9 +728,9 @@ int main(void)
 			// send UDP sync packet in return. This is !master, so we only expect to get ONE source of these messages (not many, at the same time)
 			// thus, we can rely on the "last read" IP to be the recipient (we also only read the address off UDP packets, not those from server/TCP)
 			if (IP1 != 0) {
-				memset(remoteAddress, 0, 32);
-				sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
-				ESP8266_Send_UDP(pingMessage, remoteAddress, remotePort);
+				//memset(remoteAddress, 0, 32);
+				//sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
+				ESP8266_Send_UDP(pingMessage, IP1, IP2, IP3, IP4, remotePort);
 			}
 		}
 		*/
