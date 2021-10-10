@@ -321,16 +321,14 @@ uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, ch
 }
 
 // If you want to send data to any other UDP terminals, please set the IP and port of this terminal.
-uint8_t ESP8266_Send_UDP(char* Data, char* Domain, uint8_t Port)
+uint8_t ESP8266_Send_UDP(char* Data, uint8_t IP1, uint8_t IP2, uint8_t IP3, uint8_t IP4, uint8_t Port)
 {
 	//char _atCommand[60];
 	memset(_atCommand, 0, 60);
 	//sprintf(_atCommand, "AT+CIPSEND=%d", (strlen(Data)+2));
-	sprintf(_atCommand, "AT+CIPSEND=%d, \"%s\", %d", (strlen(Data)+2), Domain, Port);
+	sprintf(_atCommand, "AT+CIPSEND=%d, \"%d.%d.%d.%d\", %d", (strlen(Data)+2), IP1, IP2, IP3, IP4, Port);
 	_atCommand[59] = 0;
-	//USART_SendString(_atCommand);
 	
-	/*
 	SendATandExpectResponse(_atCommand, "\r\nOK\r\n>");
 	if(!SendATandExpectResponse(Data, "\r\nSEND OK\r\n"))
 	{
@@ -338,7 +336,6 @@ uint8_t ESP8266_Send_UDP(char* Data, char* Domain, uint8_t Port)
 		return ESP8266_RESPONSE_TIMEOUT;
 		return ESP8266_RESPONSE_ERROR;
 	}
-	*/
 	return ESP8266_RESPONSE_FINISHED;
 }
 
@@ -383,12 +380,12 @@ uint16_t Read_Data(char* _buffer)
 	return len;
 }
 
-# define BUFFER_LENGTH 20
+# define BUFFER_LENGTH 40
 # define SLOW 3
 # define RAPID 5
 
 uint8_t Running_Status = 0;
-//volatile uint8_t Connect_Status = 0;
+uint8_t Connect_Status = 0;
 
 // program buffers
 volatile uint8_t program[BUFFER_LENGTH];
@@ -460,7 +457,7 @@ void handlePayload(char command, int len, char payload[]) {
 			step = 0;  // og RESET!
 			break;
 			
-			/*	
+
 			// +IPD,1,4:[05][01]	
 			// +IPD,1,4,192.168.160.7,4445:[05][01] <-- STAIP of master	
 		case 0x05: // SYNC	
@@ -476,7 +473,6 @@ void handlePayload(char command, int len, char payload[]) {
 				measureJitter = 0;  // get ready for next round (next sync packet)	
 			}	
 			break;	
-			*/	
 
 			/*	
 		case 0x06:  // PING REQUEST	
@@ -538,8 +534,8 @@ ISR (TIMER1_COMPA_vect)
 		uint8_t masterState = master;
 		if (!master && ticksSinceSync > syncTimeout) masterState = blinkState;
 		
-		
 		newState = (newState & ~(1 << 3) & ~(1 << 4)) | (Running_Status << 3) | (masterState << 4);  // Running_Status 0 is OFF
+		//newState = (newState & ~(1 << 3) & ~(1 << 4) & ~(1 << 5)) | (Connect_Status << 3) | (Running_Status << 4) | (masterState << 5);  // Running_Status 0 is OFF
 	}
 	
 	if (ticks++ >= tempo) {
@@ -554,10 +550,10 @@ ISR (TIMER1_COMPA_vect)
 	PORTB = newState;
 
 	if (!master) {	
-		/*	
+
 		if (measureJitter == 2) jitterTicks++;	
 		if (jitterTicks > 65530) {	
-			USART_SendString("jitterTicks maxed out");	
+			//USART_SendString("jitterTicks maxed out");	
 			jitterTicks = 65530;	
 		}	
 			
@@ -565,18 +561,16 @@ ISR (TIMER1_COMPA_vect)
 			jitterTicks = 0;	
 			measureJitter = 2;  // send ping ASAP	
 		}	
-		*/	
-		/*	
+		
 		if (measureJitter == 0) {	
 			if (ticksSinceSync > syncTimeout) {	
 				//if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times	
-				//	master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know	
+				master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know	
 				//}	
 			} else ticksSinceSync++;	
-		}	
-		*/	
+		}
 
-	} /*else {	
+	} else {	
 		
 		if (ticks2++ >= sync) {	
 			ticks2 = 0;	
@@ -584,7 +578,7 @@ ISR (TIMER1_COMPA_vect)
 		} else {	
 			doSync = false;	
 		}	
-	}*/
+	}
 	SREG = oldsrg;
 }
 
@@ -612,13 +606,12 @@ int main(void)
 	//char _buffer[40];
 	//uint8_t Connect_Status;
 	//uint8_t Sample = 0;
+	Running_Status = 0;
 	
 	DDRB = 0xFF; // set PORTB for output
 	//DDRD = 0xFF;
 	//PORTB = 0b11011111; // crash indicator (LED 5)
 	//PORTD = 0b11111111; // network setup indicator (LED 2) OFF
-	
-	PORTB = 0b11111111;  // init (all leds off)
 	
 	//DDRC = 0x00; // set PORTC for input
 	//PORTC = 0xFF;
@@ -683,9 +676,9 @@ int main(void)
 	uint8_t IP1 = 0, IP2 = 0, IP3 = 0, IP4 = 0;
 	uint8_t remotePort;
 	
-		//char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
-		//char pingMessage[3] = { 0x06, 0x01, 0xFF };
-		//char pingResponse[3] = { 0x07, 0x01, 0xFF };
+	char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
+	char pingMessage[3] = { 0x06, 0x01, 0xFF };
+	char pingResponse[3] = { 0x07, 0x01, 0xFF };
 
 	if (master) doSync = true; // test!!
 	Running_Status = 1;
@@ -706,7 +699,6 @@ int main(void)
 			////}	
 		//}	
 
-		/*	
 		if (master && connectionMode == MULTIPLE && doSync) {	
 			doSync = false;  // only one time	
 			ESP8266_Send(1, syncMessage); 	// send UDP sync message (is this UDP broadcast?)	
@@ -721,7 +713,7 @@ int main(void)
 				ESP8266_Send_UDP(pingMessage, IP1, IP2, IP3, IP4, remotePort);	
 			}	
 		}	
-		*/
+		
 		uint8_t len = 0;
 		memset(readme, 0, 40);  
 		len = Read_Data(readme);
@@ -777,16 +769,15 @@ int main(void)
 					strncpy(payload, pbuffer_len+1 +2, dLengde);
 					payload[dLengde] = 0;
 					
-					//if (master && dKanal == 1 && dKommando == 0x06) {
-					//memset(remoteAddress, 0, 32);
-					//sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
-					//// send back response on ping, to same device (address)...
-					//ESP8266_Send_UDP(pingResponse, remoteAddress, remotePort);
-					//
-					//} else {
+					if (master && dKanal == 1 && dKommando == 0x06) {
+						//memset(remoteAddress, 0, 32);
+						//sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);
+						// send back response on ping, to same device (address)...
+						ESP8266_Send_UDP(pingResponse, IP1, IP2, IP3, IP4, remotePort);
+					} else {
+						handlePayload(dKommando, dLengde, payload);
+					}
 					//handlePayload(dKommando, dLengde, payload);
-					//}
-					handlePayload(dKommando, dLengde, payload);
 
 					pbuffer_cmd = strstr(pbuffer_len, "+IPD");
 
