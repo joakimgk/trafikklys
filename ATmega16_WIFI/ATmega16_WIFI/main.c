@@ -38,7 +38,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.202.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.46.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define CHANNEL_ID			"119922"
 
@@ -549,35 +549,36 @@ ISR (TIMER1_COMPA_vect)
 	}
 	PORTB = newState;
 
-	if (!master) {	
+	if (Running_Status == 1) {
+		if (!master) {	
 
-		if (measureJitter == 2) jitterTicks++;	
-		if (jitterTicks > 65530) {	
-			//USART_SendString("jitterTicks maxed out");	
-			jitterTicks = 65530;	
-		}	
+			if (measureJitter == 2) jitterTicks++;	
+			if (jitterTicks > 65530) {	
+				//USART_SendString("jitterTicks maxed out");	
+				jitterTicks = 65530;	
+			}	
 			
-		if (measureJitter == 1) {	
-			jitterTicks = 0;	
-			measureJitter = 2;  // send ping ASAP	
-		}	
+			if (measureJitter == 1) {	
+				jitterTicks = 0;	
+				measureJitter = 2;  // send ping ASAP	
+			}	
 		
-		if (measureJitter == 0) {	
-			if (ticksSinceSync > syncTimeout) {	
-				//if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times	
-				master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know	
-				//}	
-			} else ticksSinceSync++;	
-		}
+			if (measureJitter == 0) {	
+				if (ticksSinceSync > syncTimeout) {	
+					//if (rand() < 0.1) { // don't think we actually need rand, since each client will start up at different times	
+					master = true;  // try becoming master. If someone beats you to it, receiving 0x05 (sync) will let you know	
+					//}	
+				} else ticksSinceSync++;	
+			}
 
-	} else {	
-		
-		if (ticks2++ >= sync) {	
-			ticks2 = 0;	
-			doSync = true;	
 		} else {	
-			doSync = false;	
-		}	
+		
+			if (ticks2++ >= sync) {	
+				ticks2 = 0;	// reset counter
+				doSync = true;	// set flag
+				PORTC = 0b00000011;  // PC1
+			}	
+		}
 	}
 	SREG = oldsrg;
 }
@@ -613,7 +614,8 @@ int main(void)
 	//PORTB = 0b11011111; // crash indicator (LED 5)
 	//PORTD = 0b11111111; // network setup indicator (LED 2) OFF
 	
-	//DDRC = 0x00; // set PORTC for input
+	DDRC = 0xFF; // set PORTC for output
+	PORTC = 0b00000001;  // PC0  (test) 
 	//PORTC = 0xFF;
 
 	program[0] = 0b00000100;
@@ -676,11 +678,11 @@ int main(void)
 	uint8_t IP1 = 0, IP2 = 0, IP3 = 0, IP4 = 0;
 	uint8_t remotePort;
 	
-	char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
-	char pingMessage[3] = { 0x06, 0x01, 0xFF };
-	char pingResponse[3] = { 0x07, 0x01, 0xFF };
+	char syncMessage[4] = { 0x05, 0x01, 0xFF, 0x00 }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
+	char pingMessage[4] = { 0x06, 0x01, 0xFF, 0x00 };  // all null terminated
+	char pingResponse[4] = { 0x07, 0x01, 0xFF, 0x00 };
 
-	if (master) doSync = true; // test!!
+	//if (master) doSync = true; // test!!
 	Running_Status = 1;
 	//Connect_Status = ESP8266_connected();
 	
@@ -700,9 +702,11 @@ int main(void)
 		//}	
 
 		if (master && connectionMode == MULTIPLE && doSync) {	
-			doSync = false;  // only one time	
+			doSync = false;  // clear flag
 			ESP8266_Send(1, syncMessage); 	// send UDP sync message (is this UDP broadcast?)	
-		}	
+		}
+		
+		/*
 		if (!master && measureJitter == 2) {	
 			// here, we HAVE received a 0x05 sync packet (from master)	
 			// send UDP sync packet in return. This is !master, so we only expect to get ONE source of these messages (not many, at the same time)	
@@ -712,7 +716,8 @@ int main(void)
 				//sprintf(remoteAddress, "%d.%d.%d.%d", IP1, IP2, IP3, IP4);	
 				ESP8266_Send_UDP(pingMessage, IP1, IP2, IP3, IP4, remotePort);	
 			}	
-		}	
+		}
+		*/
 		
 		uint8_t len = 0;
 		memset(readme, 0, 40);  
