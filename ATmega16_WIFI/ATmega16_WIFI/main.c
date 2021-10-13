@@ -38,7 +38,7 @@
 #define BOTH_STATION_AND_ACCESPOINT		3
 
 /* Define Required fields shown below */
-#define DOMAIN				"192.168.46.234"   //43.86"  //"192.168.43.254"
+#define DOMAIN				"192.168.135.234"   //43.86"  //"192.168.43.254"
 #define PORT				"10000"
 #define CHANNEL_ID			"119922"
 
@@ -401,7 +401,7 @@ volatile uint8_t step = 0;
 volatile uint8_t tempo = 25;
 volatile uint8_t ticks = 0;
 
-volatile uint8_t ticks2 = 0;
+volatile uint16_t ticks2 = 0;
 
 // status indicator rate
 uint8_t tempoS = 120;
@@ -571,13 +571,13 @@ ISR (TIMER1_COMPA_vect)
 				} else ticksSinceSync++;	
 			}
 
-		} else {	
-		
+		} else {
+			
 			if (ticks2++ >= sync) {	
 				ticks2 = 0;	// reset counter
 				doSync = true;	// set flag
 				PORTC = 0b00000011;  // PC1
-			}	
+			}
 		}
 	}
 	SREG = oldsrg;
@@ -678,9 +678,9 @@ int main(void)
 	uint8_t IP1 = 0, IP2 = 0, IP3 = 0, IP4 = 0;
 	uint8_t remotePort;
 	
-	char syncMessage[4] = { 0x05, 0x01, 0xFF, 0x00 }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
-	char pingMessage[4] = { 0x06, 0x01, 0xFF, 0x00 };  // all null terminated
-	char pingResponse[4] = { 0x07, 0x01, 0xFF, 0x00 };
+	char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
+	char pingMessage[3] = { 0x06, 0x01, 0xFF };  // all null terminated
+	char pingResponse[3] = { 0x07, 0x01, 0xFF };
 
 	//if (master) doSync = true; // test!!
 	Running_Status = 1;
@@ -701,8 +701,10 @@ int main(void)
 			////}	
 		//}	
 
+
 		if (master && connectionMode == MULTIPLE && doSync) {	
 			doSync = false;  // clear flag
+			//PORTC = 0b00000001;  // PC1
 			ESP8266_Send(1, syncMessage); 	// send UDP sync message (is this UDP broadcast?)	
 		}
 		
