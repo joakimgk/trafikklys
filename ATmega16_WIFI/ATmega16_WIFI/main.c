@@ -371,12 +371,29 @@ uint8_t ESP8266_DataRead()
 	}
 }
 
-uint16_t Read_Data(char* _buffer)
+uint16_t Read_Data(char* _buffer, uint8_t buffer_length)
 {
 	uint16_t len = 0;
-	_delay_ms(100);
-	while(ESP8266_DataAvailable() > 0)
-	_buffer[len++] = ESP8266_DataRead();
+	//_delay_ms(100);
+	uint16_t timeout = 1000;
+	uint16_t timer = 0;
+	if (ESP8266_DataAvailable() > 0) {
+		// wait until \r\n
+		uint8_t x = ESP8266_DataRead();
+		while (x != '\n' && len < buffer_length - 2) {
+			_buffer[len++] = x;
+			while (ESP8266_DataAvailable() == 0 && timer++ < timeout) {
+				_delay_ms(1);
+			}
+			if (timer >= timeout) PORTC = 0b01000000;  // ALARM! Read timeout!
+			x = ESP8266_DataRead();
+		}
+		if (len == buffer_length - 2) PORTC = 0b10000000;  // ALARM! Data being truncated!
+		_buffer[len++] = x;
+		_buffer[len++] = '\0';
+	}
+	//while(ESP8266_DataAvailable() > 0)
+	//_buffer[len++] = ESP8266_DataRead();
 	return len;
 }
 
@@ -458,7 +475,7 @@ void handlePayload(char command, int len, char payload[]) {
 			break;
 			
 
-			// +IPD,1,4:[05][01]	
+			// +IPD,0,4:[05][01]	
 			// +IPD,1,4,192.168.160.7,4445:[05][01] <-- STAIP of master	
 		case 0x05: // SYNC	
 			ticksSinceSync = 0; // reset counter	
@@ -561,7 +578,7 @@ ISR (TIMER1_COMPA_vect)
 			if (measureJitter == 1) {	
 				jitterTicks = 0;	
 				measureJitter = 2;  // send ping ASAP	
-			}	
+			} 
 		
 			if (measureJitter == 0) {	
 				if (ticksSinceSync > syncTimeout) {	
@@ -722,14 +739,14 @@ int main(void)
 		*/
 		
 		uint8_t len = 0;
-		memset(readme, 0, 40);  
-		len = Read_Data(readme);
+		memset(readme, 0, 40);
+		len = Read_Data(readme, 40);
 		
 		unsigned char * pbuffer_cmd = strstr(readme, "+IPD");
 		if (len > 0) {
 			if (pbuffer_cmd != NULL) {
 
-				while (pbuffer_cmd != NULL) {
+				while (pbuffer_cmd != NULL) {  // +IPD,1,42:0x01 0x02 0xAA 0x23+IPD,1,3 ... ...
 
 					unsigned char *pbuffer_len = strstr(pbuffer_cmd, ":");
 
@@ -774,7 +791,7 @@ int main(void)
 					
 					// +1 for å klarere :, +2 for å gå forbi kommando- og lengde-bytes
 					strncpy(payload, pbuffer_len+1 +2, dLengde);
-					payload[dLengde] = 0;
+					payload[dLengde] = 0;  // 000 111 000 111 
 					
 					if (master && dKanal == 1 && dKommando == 0x06) {
 						//memset(remoteAddress, 0, 32);
