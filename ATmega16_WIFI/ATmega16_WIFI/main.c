@@ -178,28 +178,19 @@ bool SendATandExpectResponse(char* ATCommand, char* ExpectedResponse)
 
 bool ESP8266_MessageMode(uint8_t Mode)
 {
-	//char _atCommand[20];
-	memset(_atCommand, 0, 20);
 	sprintf(_atCommand, "AT+CIPDINFO=%d", Mode);
-	_atCommand[19] = 0;
 	return SendATandExpectResponse(_atCommand, "\r\nOK\r\n");
 }
 
 bool ESP8266_ApplicationMode(uint8_t Mode)
 {
-	//char _atCommand[20];
-	memset(_atCommand, 0, 20);
 	sprintf(_atCommand, "AT+CIPMODE=%d", Mode);
-	_atCommand[19] = 0;
 	return SendATandExpectResponse(_atCommand, "\r\nOK\r\n");
 }
 
 bool ESP8266_ConnectionMode(uint8_t Mode)
 {
-	//char _atCommand[20];
-	memset(_atCommand, 0, 20);
 	sprintf(_atCommand, "AT+CIPMUX=%d", Mode);
-	_atCommand[19] = 0;
 	return SendATandExpectResponse(_atCommand, "\r\nOK\r\n");
 }
 
@@ -220,19 +211,13 @@ bool ESP8266_Close()
 
 bool ESP8266_WIFIMode(uint8_t _mode)
 {
-	//char _atCommand[20];
-	memset(_atCommand, 0, 20);
 	sprintf(_atCommand, "AT+CWMODE=%d", _mode);
-	_atCommand[19] = 0;
 	return SendATandExpectResponse(_atCommand, "\r\nOK\r\n");
 }
 
 uint8_t ESP8266_JoinAccessPoint(char* _SSID, char* _PASSWORD)
 {
-	//char _atCommand[60];
-	memset(_atCommand, 0, 60);
 	sprintf(_atCommand, "AT+CWJAP=\"%s\",\"%s\"", _SSID, _PASSWORD);
-	_atCommand[59] = 0;
 	if(SendATandExpectResponse(_atCommand, "\r\nWIFI CONNECTED\r\n"))
 	return ESP8266_WIFI_CONNECTED;
 	else{
@@ -279,9 +264,6 @@ uint8_t ESP8266_connected()
 uint8_t ESP8266_Start(uint8_t _ConnectionNumber, char* Domain, char* Port)
 {
 	bool _startResponse;
-	//char _atCommand[60];
-	memset(_atCommand, 0, 60);
-	_atCommand[59] = 0;
 
 	if(SendATandExpectResponse("AT+CIPMUX?", "CIPMUX:0"))
 		sprintf(_atCommand, "AT+CIPSTART=\"TCP\",\"%s\",%s", Domain, Port);
@@ -301,9 +283,6 @@ uint8_t ESP8266_Start(uint8_t _ConnectionNumber, char* Domain, char* Port)
 uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, char* LocalPort, uint8_t _Mode)
 {
 	bool _startResponse;
-	//char _atCommand[60];
-	memset(_atCommand, 0, 60);
-	_atCommand[59] = 0;
 
 	if(SendATandExpectResponse("AT+CIPMUX?", "CIPMUX:0"))
 		sprintf(_atCommand, "AT+CIPSTART=\"UDP\",\"%s\",%s", Domain, Port);
@@ -323,12 +302,7 @@ uint8_t ESP8266_StartUDP(uint8_t _ConnectionNumber, char* Domain, char* Port, ch
 // If you want to send data to any other UDP terminals, please set the IP and port of this terminal.
 uint8_t ESP8266_Send_UDP(char* Data, uint8_t IP1, uint8_t IP2, uint8_t IP3, uint8_t IP4, uint8_t Port)
 {
-	//char _atCommand[60];
-	memset(_atCommand, 0, 60);
-	//sprintf(_atCommand, "AT+CIPSEND=%d", (strlen(Data)+2));
 	sprintf(_atCommand, "AT+CIPSEND=%d, \"%d.%d.%d.%d\", %d", (strlen(Data)+2), IP1, IP2, IP3, IP4, Port);
-	_atCommand[59] = 0;
-	
 	SendATandExpectResponse(_atCommand, "\r\nOK\r\n>");
 	if(!SendATandExpectResponse(Data, "\r\nSEND OK\r\n"))
 	{
@@ -342,10 +316,7 @@ uint8_t ESP8266_Send_UDP(char* Data, uint8_t IP1, uint8_t IP2, uint8_t IP3, uint
 // Otherwise, set connection number of existing connection (TCP or UDP)
 uint8_t ESP8266_Send(uint8_t _ConnectionNumber, char* Data)
 {
-	//char _atCommand[20];
-	memset(_atCommand, 0, 20);
 	sprintf(_atCommand, "AT+CIPSEND=%d,%d", _ConnectionNumber, (strlen(Data)+2));
-	_atCommand[19] = 0;
 	SendATandExpectResponse(_atCommand, "\r\nOK\r\n>");
 	if(!SendATandExpectResponse(Data, "\r\nSEND OK\r\n"))
 	{
@@ -385,10 +356,10 @@ uint16_t Read_Data(char* _buffer, uint8_t buffer_length)
 			while (ESP8266_DataAvailable() == 0 && timer++ < timeout) {
 				_delay_ms(1);
 			}
-			if (timer >= timeout) PORTC = 0b01000000;  // ALARM! Read timeout!
+			if (timer >= timeout) PORTC = 0b01000000;  // ALARM! Read timeout! PC6
 			x = ESP8266_DataRead();
 		}
-		if (len == buffer_length - 2) PORTC = 0b10000000;  // ALARM! Data being truncated!
+		if (len == buffer_length - 2) PORTC = 0b10000000;  // ALARM! Data being truncated! PC7
 		_buffer[len++] = x;
 		_buffer[len++] = '\0';
 	}
@@ -695,9 +666,9 @@ int main(void)
 	uint8_t IP1 = 0, IP2 = 0, IP3 = 0, IP4 = 0;
 	uint8_t remotePort;
 	
-	char syncMessage[3] = { 0x05, 0x01, 0xFF }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
-	char pingMessage[3] = { 0x06, 0x01, 0xFF };  // all null terminated
-	char pingResponse[3] = { 0x07, 0x01, 0xFF };
+	char syncMessage[] = { 0x05, 0x01, 0xFF, '\0' }; // payload 0xFF unused (should support empty payload, length = 0, but don't yet)
+	char pingMessage[] = { 0x06, 0x01, 0xFF, '\0' };  // all null terminated
+	char pingResponse[] = { 0x07, 0x01, 0xFF, '\0' };
 
 	//if (master) doSync = true; // test!!
 	Running_Status = 1;
