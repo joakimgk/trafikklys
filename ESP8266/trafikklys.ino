@@ -3,13 +3,14 @@
 #include <Ticker.h>
 
 #define PORT 10000
-#define HOST "192.168.131.234"
+#define HOST "192.168.227.234"
 #define MAX_LENGTH 256
+#define TICKS_MAX 65000
 
 char buffer[MAX_LENGTH];
 const short int GREEN = 2;
-const short int YELLOW = 0;
-const short int RED = 4;
+const short int YELLOW = 4;
+const short int RED = 5;
 int state = LOW;
 
 volatile unsigned int tempo = 50;
@@ -34,13 +35,13 @@ void ICACHE_RAM_ATTR onTime() {
     Serial.println("Tick " + (String)ticks + " of " + (String)tempo);
   }
   */
-  if (ticks++ >= tempo) {
+  if (ticks++ >= tempo || ticks > TICKS_MAX) {
     blink();
     ticks = 0;
   }
-
+  
   // Re-Arm the timer as using TIM_SINGLE
-	timer1_write(10000);//12us
+	timer1_write(50000);//12us
 }
 
 void setup() {
@@ -50,10 +51,9 @@ void setup() {
   pinMode(RED, OUTPUT);
 
   WiFiManager wifiManager;
-  wifiManager.setConnectTimeout(3);
   wifiManager.setConnectRetries(4);
-  wifiManager.setConfigPortalTimeout(60);
-
+  wifiManager.setConnectTimeout(3);
+  
   // fetches ssid and pass fromasd eeprom and tries to connect
   // if it does not connect it starts an access point with the specified name
   // and goes into a blocking loop awaiting configuration
@@ -73,18 +73,10 @@ void setup() {
   program[3] = 0b00000010;
 
   timer1_attachInterrupt(onTime); // Add ISR Function
-	timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);
-	/* Dividers:
-		TIM_DIV1 = 0,   //80MHz (80 ticks/us - 104857.588 us max)
-		TIM_DIV16 = 1,  //5MHz (5 ticks/us - 1677721.4 us max)
-		TIM_DIV256 = 3  //312.5Khz (1 tick = 3.2us - 26843542.4 us max)
-	Reloads:
-		TIM_SINGLE	0 //on interrupt routine you need to write a new value to start the timer again
-		TIM_LOOP	1 //on interrupt the counter will start with the same value again
-	*/
-	
+	timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);  //NB!! Crystal is 26MHz!! Not 80!
+
 	// Arm the Timer for our 0.2s Interval
-	timer1_write(10000); // 1000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
+	timer1_write(50000); // 1000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 }
 
 
@@ -123,7 +115,9 @@ void blink() {
   digitalWrite(YELLOW, getBit(program[step], 1));
   digitalWrite(RED, getBit(program[step], 2));
   
-  if (++step >= length) step = 0;
+  if (++step >= length) {
+    step = 0;
+  }
   //Serial.print("\n" + (String)step + ": ");
   //printByte(program[step]);
 }
