@@ -3,9 +3,13 @@
 #include <Ticker.h>
 
 #define PORT 10000
-#define HOST "192.168.227.234"
+#define HOST "192.168.2.200"
 #define MAX_LENGTH 256
+#define TIMER_DELAY 25000
 #define TICKS_MAX 65000
+
+const char* ssid     = "Xperia z";         // The SSID (name) of the Wi-Fi network you want to connect to
+const char* password = "fleskeeske";     // The password of the Wi-Fi network
 
 char buffer[MAX_LENGTH];
 const short int GREEN = 2;
@@ -23,25 +27,17 @@ volatile int step = 0;
 bool offline = false;
 
 WiFiClient client;
-
 Ticker timer;
 
 volatile int ticks;
 
 // ISR to Fire when Timer is triggered
 void ICACHE_RAM_ATTR onTime() {
-  /*
-  if (ticks % 10 == 0) {
-    Serial.println("Tick " + (String)ticks + " of " + (String)tempo);
-  }
-  */
-  if (ticks++ >= tempo || ticks > TICKS_MAX) {
+  if (ticks++ >= tempo) {
     blink();
     ticks = 0;
+    // tempo = newTempo;  // reset tempo only when current interval is complete
   }
-  
-  // Re-Arm the timer as using TIM_SINGLE
-	timer1_write(50000);//12us
 }
 
 void setup() {
@@ -50,11 +46,15 @@ void setup() {
   pinMode(YELLOW, OUTPUT);
   pinMode(RED, OUTPUT);
 
+  Serial.println("\nTrafikklys 3.2\n");
+
+  //WiFi.begin(ssid, password);             // Connect to the network
   WiFiManager wifiManager;
-  wifiManager.setConnectRetries(4);
-  wifiManager.setConnectTimeout(3);
-  
-  // fetches ssid and pass fromasd eeprom and tries to connect
+  wifiManager.setConnectTimeout(10);
+  wifiManager.setConnectRetries(6);
+  wifiManager.setConfigPortalTimeout(60);
+
+  // fetches ssid and pass from eeprom and tries to connect
   // if it does not connect it starts an access point with the specified name
   // and goes into a blocking loop awaiting configuration
   wifiManager.autoConnect();
@@ -73,10 +73,10 @@ void setup() {
   program[3] = 0b00000010;
 
   timer1_attachInterrupt(onTime); // Add ISR Function
-	timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);  //NB!! Crystal is 26MHz!! Not 80!
+  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);  //NB!! Crystal is 26MHz!! Not 80!
 
-	// Arm the Timer for our 0.2s Interval
-	timer1_write(50000); // 1000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
+  // Arm the Timer for our 0.2s Interval
+  timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 }
 
 
@@ -106,11 +106,11 @@ void printByte(unsigned char b) {
   }
 }
 
-int getBit(unsigned char b, int i) {
+ICACHE_RAM_ATTR int getBit(unsigned char b, int i) {
   return ((b >> i) & 0b00000001) == 1 ? HIGH : LOW;
 }
 
-void blink() {
+ICACHE_RAM_ATTR void blink() {
   digitalWrite(GREEN, getBit(program[step], 0));
   digitalWrite(YELLOW, getBit(program[step], 1));
   digitalWrite(RED, getBit(program[step], 2));
@@ -123,49 +123,49 @@ void blink() {
 }
 
 void handlePayload(char payload[]) {
-	
+  
   char command = payload[0];
   int len = (int)payload[1];
-	uint16_t test;
-	uint8_t i;
-	
-	switch (command) {
-		case 0x01:  // TEMPO
-			test = payload[2];
+  uint16_t test;
+  uint8_t i;
+  
+  switch (command) {
+    case 0x01:  // TEMPO
+      test = payload[2];
 
-			// safety....
-			if (test < 1) test = 1;
-			else if (test > 255) test = 256;
-			
-			tempo = test;
+      // safety....
+      if (test < 1) test = 1;
+      else if (test > 255) test = 256;
+      
+      tempo = test;
       if (tempo > ticks) {
         ticks = 0;
       }
-			break;
-			
-		case 0x02:  // RESET (restart nåværende program)
-			step = 0;
-			break;
-	
-		case 0x03:  // MOTTA PROGRAM  (dump payload inn i *rec_program)
-			//memcpy(rec_program, payload, len);	
-			for (i = 0; i < len; i++) {
-				rec_program[i] = payload[i + 2];
-			}
-			rec_length = len;
-			break;
-		
-		case 0x04: // BYTT PROGRAM (bytt om referanser og bruk av *program og *rec_program)
-			//swapArrays(program, rec_program);
-			for (i = 0; i < rec_length; i++) {
-				program[i] = rec_program[i];
-			}
-			length = rec_length;
-			step = 0;  // og RESET!
-			break;
-			
-		default:
-			break;
-	}
+      break;
+      
+    case 0x02:  // RESET (restart nåværende program)
+      step = 0;
+      break;
+  
+    case 0x03:  // MOTTA PROGRAM  (dump payload inn i *rec_program)
+      //memcpy(rec_program, payload, len);	
+      for (i = 0; i < len; i++) {
+        rec_program[i] = payload[i + 2];
+      }
+      rec_length = len;
+      break;
+    
+    case 0x04: // BYTT PROGRAM (bytt om referanser og bruk av *program og *rec_program)
+      //swapArrays(program, rec_program);
+      for (i = 0; i < rec_length; i++) {
+        program[i] = rec_program[i];
+      }
+      length = rec_length;
+      step = 0;  // og RESET!
+      break;
+      
+    default:
+      break;
+  }
 
 }
