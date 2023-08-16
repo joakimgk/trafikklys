@@ -1,21 +1,32 @@
 #include <WiFiManager.h>         // https://github.com/tzapu/WiFiManager
 #include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
 #include <Ticker.h>
 
 #define PORT 10000
-#define HOST "192.168.2.200"
-#define MAX_LENGTH 256
-#define TIMER_DELAY 25000
-#define TICKS_MAX 65000
+#define HOST "192.168.227.234"
 
-const char* ssid     = "Xperia z";         // The SSID (name) of the Wi-Fi network you want to connect to
-const char* password = "fleskeeske";     // The password of the Wi-Fi network
+#define UDP_PORT 4210
+#define UDP_HOST "0.0.0.0"
+
+#define MAX_LENGTH 256
+#define MAX_CLIENTS 10
+
+#define TIMER_DELAY 25000
+#define TICKS_MAX 3000
+#define PING_TIME 2000
+#define RESET_TIME 500
 
 char buffer[MAX_LENGTH];
 const short int GREEN = 2;
 const short int YELLOW = 4;
 const short int RED = 5;
+
+const short int MASTER_LED = 15;
 int state = LOW;
+
+const uint32 clientID = system_get_chip_id();
+char clientIDstring[9];
 
 volatile unsigned int tempo = 50;
 char program[MAX_LENGTH];
@@ -25,19 +36,42 @@ int rec_length;
 volatile int step = 0;
 
 bool offline = false;
+bool master = false;
 
 WiFiClient client;
+WiFiUDP UDP;
 Ticker timer;
 
-volatile int ticks;
+volatile int ticks = 0;
+volatile int timeSincePing = 0;
+int j = 0;
+int jitter[MAX_CLIENTS];
+int resetTick = 0;
+volatile int timeSinceReset = 0;
+
+volatile bool resetFlag = false;
 
 // ISR to Fire when Timer is triggered
 void ICACHE_RAM_ATTR onTime() {
-  if (ticks++ >= tempo) {
+  if (resetFlag || ticks++ >= tempo) {
     blink();
     ticks = 0;
+    resetFlag = false;
     // tempo = newTempo;  // reset tempo only when current interval is complete
   }
+  
+  timeSincePing++;
+  timeSinceReset++;
+
+/*
+  if (timeSincePing % 1000 == 0) {
+    Serial.println("\tMASTER timeSincePing = " + (String)timeSincePing);
+  }
+  if (timeSinceReset % 1000 == 0) {
+    Serial.println("\tMASTER timeSinceReset = " + (String)timeSinceReset);
+  }
+  */
+
 }
 
 void setup() {
@@ -46,7 +80,12 @@ void setup() {
   pinMode(YELLOW, OUTPUT);
   pinMode(RED, OUTPUT);
 
+  pinMode(MASTER_LED, OUTPUT);
+  digitalWrite(MASTER_LED, LOW);
+
+  sprintf(clientIDstring, "%08x", clientID);
   Serial.println("\nTrafikklys 3.2\n");
+  Serial.println("ClientID: " + clientID);
 
   //WiFi.begin(ssid, password);             // Connect to the network
   WiFiManager wifiManager;
@@ -65,7 +104,14 @@ void setup() {
   if (!client.connect(HOST, PORT)) {
     Serial.println("Connection to trafikklys host failed -- running offline");
     offline = true;
+  } else {
+    Serial.println("Connected to server at " + (String)HOST + ":" + (String)PORT);
   }
+
+  // Begin listening to UDP port
+  UDP.begin(UDP_PORT);
+  Serial.print("Listening on UDP port ");
+  Serial.println(UDP_PORT);
 
   program[0] = 0b00000001;
   program[1] = 0b00000010;
@@ -79,9 +125,13 @@ void setup() {
   timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 }
 
+char packet[255];
+char pingId = '\0';
+bool pingUnsync = false;
 
 void loop() {
-  // put your main code here, to run repeatedly:
+
+  // TCP
   if (client.connected()) {
     int b = client.available();
     if (b > 0) {
@@ -94,6 +144,98 @@ void loop() {
 
         handlePayload(buffer);
       }
+    }
+  }
+
+  // UDP
+  int packetSize = UDP.parsePacket();
+  if (packetSize) {
+    Serial.print("Received packet! Size: ");
+    Serial.println(packetSize); 
+    int len = UDP.read(packet, 255);
+    if (len > 0)
+    {
+      packet[len] = '\0';
+    }
+    Serial.print("Packet received: ");
+    Serial.println(packet);
+
+    if (packet[0] == 0x06) {  // ping
+      timeSincePing = 0;
+      if (master) {
+        master = false;  // some other master out there! yield
+        digitalWrite(MASTER_LED, LOW);
+      }
+      char pingResponse[] = { 0x07, 0x04, packet[2], clientIDstring[0], clientIDstring[1], clientIDstring[2], '\0' };  // reply with same pingId, plus my ID
+      UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
+      UDP.write(pingResponse);
+      UDP.endPacket();
+    }
+
+    if (packet[0] == 0x07) {  // ping response (master only receives this...)
+      Serial.print("MASTER\tReceived ping response with ID: ");
+      Serial.print(packet[2]);
+      Serial.print(" (current pingId is ");
+      Serial.print(pingId);
+      Serial.println(")");
+
+      if (packet[2] == pingId) {
+        if (j < MAX_CLIENTS) {
+          jitter[j++] = timeSincePing;  // record time of arrival
+        }
+      } else {
+        pingUnsync = true;
+      }
+    }
+  }
+
+  if (timeSincePing > TICKS_MAX) {
+    Serial.println("ping timeout: claiming master...");
+    // become master
+    master = true;
+    digitalWrite(MASTER_LED, HIGH);
+  }
+  if (master) {
+    if (timeSincePing > PING_TIME) {
+      if (!pingUnsync && j > 0) {
+        Serial.print("MASTER\tping time: computing jitter, j = " + (String)j);
+
+        // calculate jitter based on previous times...
+        int sumJitter = 0;
+        for (int i = 0; i < j; i++) {
+          sumJitter += jitter[i];
+        }
+        Serial.print("MASTER\tping time: sum jitter = ");
+        Serial.println(sumJitter);
+        double avgJitter = sumJitter/j;
+        Serial.print("MASTER\tping time: avg jitter = ");
+        Serial.println(avgJitter);
+        resetTick = tempo - avgJitter/2;  // if fast tempo (low value) then resetTick is negative, and we don't reset :) No need at high tempo!
+        Serial.println("MASTER\tping time: resetTick = " + (String)resetTick);
+      }
+
+      Serial.println("MASTER\tping time: sending ping broadcast");
+      // send ping! (broadcast)
+      pingId = pingId == 0xFF ? 0x01 : pingId + 1;
+      char ping[] = { 0x06, 0x01, pingId, '\0' };  // each ping has an ID (so we can identify responses)
+      UDP.beginPacket(UDP_HOST, UDP_PORT);
+      UDP.write(ping);
+      UDP.endPacket();
+
+      // reset
+      timeSincePing = 0;
+      pingUnsync = false;
+      j = 0;
+    }
+
+    if (timeSinceReset > RESET_TIME && ticks == resetTick) {
+      Serial.println("MASTER\treset time (ticks, tempo = " + (String)ticks + ", " + (String)tempo + "): sending reset broadcast");
+      // send reset! (broadcast)
+      UDP.beginPacket(UDP_HOST, UDP_PORT);
+      char resetMessage[] = { 0x05, 0x01, step, '\0' };
+      UDP.write(resetMessage);
+      UDP.endPacket();
+      timeSinceReset = 0;
     }
   }
 
@@ -111,13 +253,14 @@ ICACHE_RAM_ATTR int getBit(unsigned char b, int i) {
 }
 
 ICACHE_RAM_ATTR void blink() {
+  if (++step >= length) {
+    step = 0;
+  }
+
   digitalWrite(GREEN, getBit(program[step], 0));
   digitalWrite(YELLOW, getBit(program[step], 1));
   digitalWrite(RED, getBit(program[step], 2));
   
-  if (++step >= length) {
-    step = 0;
-  }
   //Serial.print("\n" + (String)step + ": ");
   //printByte(program[step]);
 }
@@ -162,6 +305,11 @@ void handlePayload(char payload[]) {
       }
       length = rec_length;
       step = 0;  // og RESET!
+      break;
+
+    case 0x05: // RESET / SYNC 
+      step = payload[2] + 1;
+      resetFlag = true;
       break;
       
     default:
