@@ -4,7 +4,7 @@
 #include <Ticker.h>
 
 #define PORT 10000
-#define HOST "192.168.227.234"
+#define HOST "192.168.55.234"
 
 #define UDP_PORT 4210
 #define UDP_HOST "0.0.0.0"
@@ -12,7 +12,7 @@
 #define MAX_LENGTH 256
 #define MAX_CLIENTS 10
 
-#define TIMER_DELAY 25000
+#define TIMER_DELAY 2500
 #define TICKS_MAX 3000
 #define PING_TIME 2000
 #define RESET_TIME 500
@@ -28,7 +28,7 @@ int state = LOW;
 const uint32 clientID = system_get_chip_id();
 char clientIDstring[9];
 
-volatile unsigned int tempo = 50;
+volatile unsigned int tempo = 100;
 char program[MAX_LENGTH];
 char rec_program[MAX_LENGTH];
 volatile int length = 4;
@@ -46,17 +46,17 @@ volatile int ticks = 0;
 volatile int timeSincePing = 0;
 int j = 0;
 int jitter[MAX_CLIENTS];
+char sendBuffer[65];
 int resetTick = 0;
 volatile int timeSinceReset = 0;
 
-volatile bool resetFlag = false;
-
 // ISR to Fire when Timer is triggered
 void ICACHE_RAM_ATTR onTime() {
-  if (resetFlag || ticks++ >= tempo) {
+  //Serial.print(ticks);
+  //Serial.print(" ");
+  if (ticks++ >= tempo) {
     blink();
     ticks = 0;
-    resetFlag = false;
     // tempo = newTempo;  // reset tempo only when current interval is complete
   }
   
@@ -85,7 +85,8 @@ void setup() {
 
   sprintf(clientIDstring, "%08x", clientID);
   Serial.println("\nTrafikklys 3.2\n");
-  Serial.println("ClientID: " + clientID);
+  Serial.print("ClientID: ");
+  Serial.println(clientID);
 
   //WiFi.begin(ssid, password);             // Connect to the network
   WiFiManager wifiManager;
@@ -106,6 +107,9 @@ void setup() {
     offline = true;
   } else {
     Serial.println("Connected to server at " + (String)HOST + ":" + (String)PORT);
+   
+    sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
+    client.write(sendBuffer);
   }
 
   // Begin listening to UDP port
@@ -210,7 +214,8 @@ void loop() {
         double avgJitter = sumJitter/j;
         Serial.print("MASTER\tping time: avg jitter = ");
         Serial.println(avgJitter);
-        resetTick = tempo - avgJitter/2;  // if fast tempo (low value) then resetTick is negative, and we don't reset :) No need at high tempo!
+        resetTick = tempo - 20; // test
+        //tempo - avgJitter;///2;  // if fast tempo (low value) then resetTick is negative, and we don't reset :) No need at high tempo!
         Serial.println("MASTER\tping time: resetTick = " + (String)resetTick);
       }
 
@@ -308,8 +313,9 @@ void handlePayload(char payload[]) {
       break;
 
     case 0x05: // RESET / SYNC 
-      step = payload[2] + 1;
-      resetFlag = true;
+      if (!master) {
+        step = payload[2] + 1;
+      }
       break;
       
     default:
