@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    tools:parentTag="android.widget.FrameLayout"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <LinearLayout
+        android:id="@+id/light_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/traffic_light_background"
+        android:orientation="vertical">
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:layout_weight="1"
+            android:layout_margin="5dp"
+            android:src="@drawable/traffic_light_sphere"
+            android:layout_width="match_parent"
+            android:scaleType="fitCenter"
+            app:tint="#FF0000"
+            android:layout_height="match_parent"/>
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:layout_weight="1"
+            android:layout_margin="5dp"
+            android:src="@drawable/traffic_light_sphere"
+            android:layout_width="match_parent"
+            android:scaleType="fitCenter"
+            app:tint="#FFF200"
+            android:layout_height="match_parent"/>
+
+        <androidx.appcompat.widget.AppCompatImageView
+            android:layout_weight="1"
+            android:layout_margin="5dp"
+            android:src="@drawable/traffic_light_sphere"
+            android:layout_width="match_parent"
+            android:scaleType="fitCenter"
+            app:tint="#11FF00"
+            android:layout_height="match_parent"/>
+
+    </LinearLayout>
+
+</merge>

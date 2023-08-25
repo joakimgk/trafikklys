@@ -17,6 +17,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.Stack;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -30,10 +32,21 @@ public class MainActivity extends AppCompatActivity {
     ArrayList<Message> messages = new ArrayList<>();
 
     public int calibrate_index = -1;
+
+    public static final byte[] IDENTIFY  = {
+            (byte) 0b00000010
+    };
+
     public static final byte[] CALIBRATE = {
             (byte) 0b00000001,
             (byte) 0b00000010,
             (byte) 0b00000100
+    };
+
+    public static final byte[] PAUSE = {
+            (byte) 0x00,
+            (byte) 0x00,
+            (byte) 0x00
     };
 
     public static final byte[][] PROGRAMS = {
@@ -74,6 +87,38 @@ public class MainActivity extends AppCompatActivity {
 
 
     public static final int PORTNUMBER = 10000;
+
+    static TrafficLightContainer mContainer;
+
+    private static Iterator<Client> mClientIterator;
+
+    public static void mapClientTrafficLight() {
+        if (mClientIterator.hasNext()) {
+            Utility._mapClient = mClientIterator.next();
+            broadcast(PAUSE);
+            Utility._mapClient.transmit(programPayload(IDENTIFY));
+            byte[] payload = {4, 1, 0};  // reset (restart)
+            Utility._mapClient.transmit(payload);
+        } else {
+            mContainer.mAssigning = false;
+            broadcast(programPayload(CALIBRATE));
+            byte[] payload = {4, 1, 0};  // reset (restart)
+            broadcast(payload);
+        }
+    }
+
+
+    private static byte[] programPayload(byte[] program) {
+        int len = program.length;
+        byte[] payload = new byte[len + 2];
+        payload[0] = 3;
+        payload[1] = (byte) len;
+        for (int i = 0; i < len; i++) {
+            payload[i + 2] = program[i];
+        }
+        return payload;
+    }
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -126,16 +171,10 @@ public class MainActivity extends AppCompatActivity {
                 if (program == PROGRAMS.length) program = 0;
                 int len = PROGRAMS[program].length;
                 Log.v("JOAKIM", "Send program #" + program + " (" + len + " bytes)");
-                byte[] payload = new byte[len + 2];
-                payload[0] = 3;
-                payload[1] = (byte) len;
-                for (int i = 0; i < len; i++) {
-                    payload[i + 2] = PROGRAMS[program][i];
-                }
                 if (Utility.clients.size() < 1) {
                     Log.e("MainActivity", "No clients");
                 } else {
-                    broadcast(payload);
+                    broadcast(programPayload(PROGRAMS[program]));
                     // TODO: Send different parts of program to different clients...
                     //clients.get(0).transmit(payload);
                 }
@@ -174,7 +213,13 @@ public class MainActivity extends AppCompatActivity {
         setupButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
+                if (mContainer.mAssigning) {
+                    mContainer.mAssigning = false;
+                    return;
+                }
+                mContainer.mAssigning = true;
+                mClientIterator = Utility.clients.iterator();
+                mapClientTrafficLight();
             }
         });
 
@@ -228,6 +273,7 @@ public class MainActivity extends AppCompatActivity {
         String ip = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
         ipfield.setText("ip = " + ip);
 
+        mContainer = findViewById(R.id.traffic_light_container);
         networktask = new ScanTask(); //Create initial instance so SendDataToNetwork doesn't throw an error.
         networktask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, ip);
     }
@@ -246,15 +292,6 @@ public class MainActivity extends AppCompatActivity {
             broadcast(payload);
             //clients.get(0).transmit(payload);
         }
-    }
-
-    private void updateAdapter() {
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                Utility.getAdapter().notifyDataSetChanged();
-            }
-        });
     }
 
     public class ScanTask extends AsyncTask<String, Integer, Boolean> {
@@ -295,7 +332,6 @@ That said, "redir add tcp:10001:10001" on the emulator console should make it po
                     Socket socket = serverSocket.accept();
                     Log.i("Server", "Client has connected.");
 
-
                     Client newClient = new Client(clientID++, socket,
                             new Client.OnMessageReceived() {
                                 @Override
@@ -304,33 +340,32 @@ That said, "redir add tcp:10001:10001" on the emulator console should make it po
                                 }
 
                                 @Override
-                                public void onInit(long clientID, int ID, Timestamp created) {
+                                public TrafficLight onInit(long clientID, int ID, Timestamp created) {
                                     // cleanup
-/*
                                     for (Client c : new ArrayList<>(Utility.clients)) {
                                         if (c.clientID == clientID && c.ID != ID && c.created.before(created)) {
                                             Log.v("MainActivity", "Replacing dead client " + c.ID + " (" + c.clientID + ")");
                                             Utility.clients.remove(c);
-                                            updateAdapter();
+                                            publishProgress(Utility.clients.size());
+                                            return c.mTrafficLight;
                                         }
                                     }
+                                    // new client (not seen before)
                                     publishProgress(Utility.clients.size());
-                                    */
+
+                                    runOnUiThread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            // Stuff that updates the UI
+                                            mContainer.addCell();
+                                        }
+                                    });
+
+                                    return null;
                                 }
                             });
 
                     Utility.clients.add(newClient);
-                    updateAdapter();
-                    runOnUiThread(new Runnable() {
-
-                        @Override
-                        public void run() {
-
-                            // Stuff that updates the UI
-
-                        }
-                    });
-
                     publishProgress(Utility.clients.size());
                 }
                 notif.setText("DONE");
@@ -356,7 +391,7 @@ That said, "redir add tcp:10001:10001" on the emulator console should make it po
         }
     }
 
-    private void broadcast(byte[] payload) {
+    private static void broadcast(byte[] payload) {
         for (Client client : Utility.clients) {
             client.transmit(payload);
         }

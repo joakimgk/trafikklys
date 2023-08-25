@@ -14,7 +14,7 @@ public class Client {
 
     public interface OnMessageReceived {
         public void messageReceived(Message message);
-        public void onInit(long clientID, int ID, Timestamp created);
+        public TrafficLight onInit(long clientID, int ID, Timestamp created);
     }
 
     Socket nsocket;
@@ -23,7 +23,7 @@ public class Client {
     int ID;
     long clientID;
     byte[] buffer;
-    int rotation = 0;
+    TrafficLight mTrafficLight;
 
 
     public Client (int ID, Socket socket, OnMessageReceived listener) {
@@ -41,8 +41,14 @@ public class Client {
         new ReadTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
     }
 
+    public void setTrafficLight(TrafficLight trafficLight) {
+        mTrafficLight = trafficLight;
+    }
+
+    boolean isBusy = false;
+
     public void transmit(byte[] payload) {
-        new SendTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, payload);
+        new SendTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, payload);
     }
 
     public class ReadTask extends AsyncTask<byte[], byte[], Boolean> {
@@ -51,7 +57,7 @@ public class Client {
         protected Boolean doInBackground(byte[]... bytes) {
             while (!nsocket.isConnected()) {
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(500);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -64,7 +70,7 @@ public class Client {
                 byte tempdata[] = new byte[4096];
                 while (input.available() > 0) {
                     tempdata[i] = (byte) input.read();
-                    Log.v("Reading", "byte #" + i + ": " + tempdata[i]);
+                    //Log.v("Reading", "byte #" + i + ": " + tempdata[i]);
                     i++;
                 }
                 buffer = new byte[i + 1];
@@ -75,10 +81,11 @@ public class Client {
                     mMessageListener.messageReceived(new Message(ID, buffer));
 
                     Uri uri = Uri.parse(new String(buffer));
-                    Long l = Long.parseLong(uri.getQueryParameter("clientID"));
-                    if (l != null) {
+                    String p_clientID = uri.getQueryParameter("clientID");
+                    if (p_clientID != null) {
+                        Long l = Long.parseLong(p_clientID);
                         clientID = l.longValue();
-                        mMessageListener.onInit(clientID, ID, created);
+                        mTrafficLight = mMessageListener.onInit(clientID, ID, created);
                     }
                 }
                 buffer = null;
@@ -124,9 +131,21 @@ public class Client {
 
         @Override
         protected Boolean doInBackground(byte[]... params) { //This runs on a different thread
-            boolean result = false;
-
             Log.i("SendTask", "transmit " + params[0].length + " bytes");
+
+            while (!nsocket.isConnected() || isBusy) {
+                try {
+                    Thread.sleep(500);
+                    Log.i("SendTask", "Client (send thread) busy...");
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+            boolean result = false;
+            isBusy = true;
+
+
             try {
 
                 if (nsocket.isConnected()) {
@@ -142,6 +161,8 @@ public class Client {
 
             } catch (IOException e) {
                 e.printStackTrace();
+            } finally {
+                isBusy = false;
             }
             return result;
         }

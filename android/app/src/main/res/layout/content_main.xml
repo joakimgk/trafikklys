@@ -8,15 +8,14 @@
     tools:context=".MainActivity"
     tools:showIn="@layout/activity_main">
 
-    <fragment
+    <com.example.trafikklys2.TrafficLightContainer
         xmlns:android="http://schemas.android.com/apk/res/android"
         xmlns:tools="http://schemas.android.com/tools"
         android:layout_width="match_parent"
-        android:name="com.example.trafikklys2.PositioningFragment"
         android:layout_height="250dp"
-        android:id="@+id/positioning"
+        android:background="@drawable/ic_launcher_background"
+        android:id="@+id/traffic_light_container"
         app:layout_constraintTop_toTopOf="parent"
-        tools:context="no.gknudsen.trafikklys.PositioningFragment"
     />
 
     <TextView
@@ -24,23 +23,20 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
-        android:layout_marginTop="64dp"
+        android:layout_marginTop="8dp"
         android:layout_marginEnd="8dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="parent" />
+        app:layout_constraintTop_toBottomOf="@+id/traffic_light_container" />
 
 
     <TextView
         android:id="@+id/text2"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginBottom="80dp"
+        android:layout_marginBottom="20dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.501"
         app:layout_constraintStart_toStartOf="parent" />
 
     <Button
@@ -48,7 +44,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
-        android:layout_marginTop="80dp"
+        android:layout_marginTop="20dp"
         android:layout_marginEnd="6dp"
         android:text="Cancel Scan"
         app:layout_constraintEnd_toStartOf="@+id/setupButton"
@@ -61,8 +57,8 @@
         android:id="@+id/setupButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="80dp"
         android:background="@color/colorAccent"
+        android:layout_marginTop="20dp"
         android:text="Setup"
         app:layout_constraintEnd_toStartOf="@+id/calibrateButton"
         app:layout_constraintStart_toEndOf="@+id/cancelScanButton"
@@ -72,12 +68,13 @@
         android:id="@+id/calibrateButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="80dp"
+        android:layout_marginTop="20dp"
         android:layout_marginEnd="5dp"
         android:text="Calibrate"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/setupButton"
         app:layout_constraintTop_toBottomOf="@+id/text" />
+
 
     <Button
         android:id="@+id/testUDPButton"
@@ -86,77 +83,67 @@
         android:layout_marginStart="56dp"
         android:layout_marginTop="8dp"
         android:layout_marginBottom="8dp"
+        android:visibility="gone"
         android:text="Test UDP"
         app:layout_constraintBottom_toTopOf="@+id/text2"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/tempoMinusButton"
         app:layout_constraintVertical_bias="1.0" />
 
-
     <Button
         android:id="@+id/tempoMinusButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="56dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="16dp"
         android:layout_marginBottom="8dp"
         android:text="Tempo -"
-        app:layout_constraintBottom_toTopOf="@+id/text2"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/changeProgram"
+        app:layout_constraintTop_toBottomOf="@+id/tempoSlider"
         app:layout_constraintVertical_bias="0.473" />
 
     <TextView
         android:id="@+id/tempoIndicator"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
         android:text="100"
-        app:layout_constraintStart_toEndOf="@+id/tempoMinusButton"
-        app:layout_constraintTop_toBottomOf="@+id/resetProgram" />
+        app:layout_constraintBottom_toTopOf="@+id/tempoSlider"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/changeProgram" />
 
     <Button
         android:id="@+id/tempoPlusButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="16dp"
         android:layout_marginEnd="8dp"
-        android:layout_marginBottom="8dp"
         android:text="Tempo +"
-        app:layout_constraintBottom_toTopOf="@+id/text2"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.412"
-        app:layout_constraintStart_toEndOf="@+id/tempoIndicator"
-        app:layout_constraintTop_toBottomOf="@+id/resetProgram"
-        app:layout_constraintVertical_bias="0.473" />
+        app:layout_constraintStart_toEndOf="@+id/tempoMinusButton"
+        app:layout_constraintTop_toBottomOf="@+id/tempoSlider" />
 
     <Button
         android:id="@+id/changeProgram"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="264dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="20dp"
         android:text="Program"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintEnd_toStartOf="@+id/setupButton"
+        app:layout_constraintHorizontal_bias="0.44"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/cancelScanButton" />
 
     <Button
         android:id="@+id/resetProgram"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="36dp"
+        android:layout_marginTop="20dp"
         android:text="Reset"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.559"
         app:layout_constraintStart_toEndOf="@+id/changeProgram"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@+id/setupButton" />
 
     <SeekBar
         android:id="@+id/tempoSlider"

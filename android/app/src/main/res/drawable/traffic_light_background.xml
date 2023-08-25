@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:shape="rectangle">
+
+    <size android:width="50dp" android:height="50dp"/>
+
+    <solid
+        android:color="#3E3E3E"/>
+
+    <padding android:left="3dp"
+        android:top="3dp"
+        android:right="3dp"
+        android:bottom="3dp" />
+
+    <corners android:radius="3dp" />
+
+    <!-- Use stroke for margin because messing with
+    view margins makes circles not align -->
+    <stroke
+        android:width="5dp"
+        android:color="#00FFFFFF"/>
+
+</shape>
+
