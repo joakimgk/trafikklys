@@ -1,7 +1,6 @@
 package com.example.trafikklys2;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 
 public class Utility {
     public static ArrayList<Client> clients = new ArrayList<Client>();

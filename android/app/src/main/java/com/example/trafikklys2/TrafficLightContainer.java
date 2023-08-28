@@ -2,7 +2,9 @@ package com.example.trafikklys2;
 
 import android.content.Context;
 import android.util.AttributeSet;
+import android.view.Gravity;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import java.net.Socket;
 import java.util.Stack;
@@ -16,6 +18,8 @@ public class TrafficLightContainer extends FrameLayout
 	int cellPixelSize = 10;
 
 	public boolean mAssigning = false;
+
+	private TextView mClientIdLabel;
 
 	int horizntalCellCount = 10;
 	int verticalCellCount = 10;
@@ -50,6 +54,7 @@ public class TrafficLightContainer extends FrameLayout
 	private void init(Context context, @Nullable AttributeSet attrs)
 	{
 		setCellSize(cellDpSize);
+		mClientIdLabel = findViewById(R.id.client_id);
 	}
 
 	public void setCellSize(float cellSize)
@@ -161,6 +166,7 @@ public class TrafficLightContainer extends FrameLayout
 
 		update();
 		final int count = getChildCount();
+		FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER);
 
 		for (int i = 0; i < count; i++)
 		{
@@ -189,7 +195,14 @@ public class TrafficLightContainer extends FrameLayout
 				// Then actually position it
 				// left, top, right, bottom position inside parent
 				child.layout( x, y, x + childWidth, y + childHeight  );
+
+				//addView(mClientIdLabel, params);
+				TextView clientIDLabel = new TextView(getContext());
+				clientIDLabel.setMinLines(1);
+				clientIDLabel.setText("Hei hei");
+				clientIDLabel.layout(x, y, x + childWidth + cellPixelSize, y + childHeight + cellPixelSize);
 			}
 		}
+
 	}
 }

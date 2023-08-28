@@ -6,8 +6,6 @@ import android.os.Bundle;
 import android.text.format.Formatter;
 import android.util.Log;
 import android.view.View;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
@@ -18,7 +16,6 @@ import java.net.Socket;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.Stack;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -33,14 +30,17 @@ public class MainActivity extends AppCompatActivity {
 
     public int calibrate_index = -1;
 
+    public static byte NON = (byte) 0b00000000;
+    public static byte RED = (byte) 0b00000001;
+    public static byte YLW = (byte) 0b00000010;
+    public static byte GRN = (byte) 0b00000100;
+
     public static final byte[] IDENTIFY  = {
-            (byte) 0b00000010
+           YLW
     };
 
     public static final byte[] CALIBRATE = {
-            (byte) 0b00000001,
-            (byte) 0b00000010,
-            (byte) 0b00000100
+            RED, YLW, GRN
     };
 
     public static final byte[] PAUSE = {
@@ -51,36 +51,16 @@ public class MainActivity extends AppCompatActivity {
 
     public static final byte[][] PROGRAMS = {
             {
-                    (byte) 0b00000100,
-                    (byte) 0b00000100,
-                    (byte) 0b00000100,
-                    (byte) 0b00000100,
-                    (byte) 0b00000100,
-                    (byte) 0b00000100,
-                    (byte) 0b00000100,
-                    (byte) 0b00000100,
-                    (byte) 0b00000001,
-                    (byte) 0b00000001,
-                    (byte) 0b00000001,
-                    (byte) 0b00000001,
-                    (byte) 0b00000001,
-                    (byte) 0b00000001,
-                    (byte) 0b00000001,
-                    (byte) 0b00000001
+                    GRN, GRN, GRN, GRN, GRN, GRN, GRN, GRN,
+                    RED, RED, RED, RED, RED, RED, RED, RED
             },
             {
-                    (byte) 0b00000100,
-                    (byte) 0b00000010,
-                    (byte) 0b00000001,
-                    (byte) 0b00000010
+                    GRN, YLW, RED, YLW
             },
             {
-                    (byte) 0b00000101,
-                    (byte) 0b00000010,
-                    (byte) 0b00000101
+                    (byte) (RED & GRN), YLW, (byte) (RED & GRN)
             }
     };
-
 
     int tempo = 100;
     int program = 0;
@@ -101,10 +81,25 @@ public class MainActivity extends AppCompatActivity {
             Utility._mapClient.transmit(payload);
         } else {
             mContainer.mAssigning = false;
+            startShow();
+            /*
             broadcast(programPayload(CALIBRATE));
             byte[] payload = {4, 1, 0};  // reset (restart)
             broadcast(payload);
+             */
         }
+    }
+
+    private static void startShow() {
+        transmitProgram(Animate.Trail());
+    }
+
+    private static void transmitProgram(ArrayList<Program> program) {
+        for (Program p : program) {
+            p.mClient.transmit(programPayload(p.mProgram));
+        }
+        byte[] payload = {4, 1, 0};  // reset (restart)
+        broadcast(payload);
     }
 
 

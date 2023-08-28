@@ -25,7 +25,6 @@ public class Client {
     byte[] buffer;
     TrafficLight mTrafficLight;
 
-
     public Client (int ID, Socket socket, OnMessageReceived listener) {
         this.ID = ID;
         nsocket = socket;
