@@ -28,6 +28,8 @@ int state = LOW;
 const uint32 clientID = system_get_chip_id();
 char clientIDstring[9];
 
+bool running = false;
+
 volatile unsigned int tempo = 100;
 char program[MAX_LENGTH];
 char rec_program[MAX_LENGTH];
@@ -144,11 +146,15 @@ void loop() {
       } else {
         client.readBytes(buffer, b);
         buffer[b] = '\0';
-        Serial.println((String)buffer);
+        Serial.println("Read " + (String)b + " bytes: " + (String)buffer);
 
         handlePayload(buffer);
       }
     }
+  }
+  if (!running) {
+    delay(100);
+    return;
   }
 
   // UDP
@@ -258,6 +264,10 @@ ICACHE_RAM_ATTR int getBit(unsigned char b, int i) {
 }
 
 ICACHE_RAM_ATTR void blink() {
+  if (!running) {
+    return;
+  }
+  
   if (++step >= length) {
     step = 0;
   }
@@ -271,13 +281,22 @@ ICACHE_RAM_ATTR void blink() {
 }
 
 void handlePayload(char payload[]) {
-  
+
+  Serial.println("handlePayload [" + (String)payload + "]");
   char command = payload[0];
   int len = (int)payload[1];
   uint16_t test;
   uint8_t i;
   
   switch (command) {
+    case 0x00: // STOP / PAUSE
+      running = false;
+      break;
+
+    case 0x0A:  // START / RESUME
+      running = true;
+      break;
+      
     case 0x01:  // TEMPO
       test = payload[2];
 
@@ -293,10 +312,11 @@ void handlePayload(char payload[]) {
       
     case 0x02:  // RESET (restart nåværende program)
       step = 0;
+      running = true;
       break;
   
     case 0x03:  // MOTTA PROGRAM  (dump payload inn i *rec_program)
-      //memcpy(rec_program, payload, len);	
+      //memcpy(rec_program, payload, len);  
       for (i = 0; i < len; i++) {
         rec_program[i] = payload[i + 2];
       }
@@ -310,6 +330,7 @@ void handlePayload(char payload[]) {
       }
       length = rec_length;
       step = 0;  // og RESET!
+      running = true;
       break;
 
     case 0x05: // RESET / SYNC 
@@ -322,4 +343,8 @@ void handlePayload(char payload[]) {
       break;
   }
 
+  payload = payload + len + 2;
+  if (payload[0] != '\0') {
+      handlePayload(payload);
+  }
 }
