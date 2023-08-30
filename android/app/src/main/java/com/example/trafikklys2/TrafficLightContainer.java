@@ -21,6 +21,8 @@ public class TrafficLightContainer extends FrameLayout
 
 	private TextView mClientIdLabel;
 
+	int newPosX = 0;
+
 	int horizntalCellCount = 10;
 	int verticalCellCount = 10;
 
@@ -110,9 +112,10 @@ public class TrafficLightContainer extends FrameLayout
 		}
 	}
 
-	public void addCell()
+	public void  addCell()
 	{
-		TrafficLight newLight = new TrafficLight(getContext() );
+		TrafficLight newLight = new TrafficLight(getContext(), newPosX );
+		newPosX += cellPixelSize;
 		addView( newLight );
 	}
 
@@ -196,11 +199,13 @@ public class TrafficLightContainer extends FrameLayout
 				// left, top, right, bottom position inside parent
 				child.layout( x, y, x + childWidth, y + childHeight  );
 
+				/*
 				//addView(mClientIdLabel, params);
 				TextView clientIDLabel = new TextView(getContext());
 				clientIDLabel.setMinLines(1);
 				clientIDLabel.setText("Hei hei");
 				clientIDLabel.layout(x, y, x + childWidth + cellPixelSize, y + childHeight + cellPixelSize);
+			*/
 			}
 		}
 

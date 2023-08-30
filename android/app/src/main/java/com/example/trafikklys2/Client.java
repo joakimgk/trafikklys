@@ -25,6 +25,10 @@ public class Client {
     byte[] buffer;
     TrafficLight mTrafficLight;
 
+    public Client (long cid) {
+        clientID = cid;
+    }
+
     public Client (int ID, Socket socket, OnMessageReceived listener) {
         this.ID = ID;
         nsocket = socket;
@@ -54,7 +58,7 @@ public class Client {
 
         @Override
         protected Boolean doInBackground(byte[]... bytes) {
-            while (!nsocket.isConnected()) {
+            while (nsocket == null || !nsocket.isConnected()) {
                 try {
                     Thread.sleep(500);
                 } catch (InterruptedException e) {
@@ -132,7 +136,7 @@ public class Client {
         protected Boolean doInBackground(byte[]... params) { //This runs on a different thread
             Log.i("SendTask", "transmit " + params[0].length + " bytes");
 
-            while (!nsocket.isConnected() || isBusy) {
+            while (nsocket == null || !nsocket.isConnected() || isBusy) {
                 try {
                     Thread.sleep(500);
                     Log.i("SendTask", "Client (send thread) busy...");

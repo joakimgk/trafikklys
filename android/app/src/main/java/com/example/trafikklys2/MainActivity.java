@@ -91,7 +91,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private static void startShow() {
-        transmitProgram(Animate.Trail());
+        Utility.updateGroups();
+        //transmitProgram(Animate.Trail());
+        //transmitProgram(Animate.Wave());
+        ArrayList<Program> p = Animate.Sink();
+        transmitProgram(Animate.Sink());
     }
 
     private static void transmitProgram(ArrayList<Program> program) {
@@ -271,6 +275,22 @@ public class MainActivity extends AppCompatActivity {
         mContainer = findViewById(R.id.traffic_light_container);
         networktask = new ScanTask(); //Create initial instance so SendDataToNetwork doesn't throw an error.
         networktask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, ip);
+
+        if (false) {
+            // test:
+            int numClients = 6;
+            int[] orientations = { 0, 90, 270, 90, 270, 180};
+            Utility.clients = new ArrayList<>(numClients);
+            for (int i = 0; i < numClients; i++) {
+                Client c = new Client((long)i);
+                Utility.clients.add(c);
+                c.mTrafficLight = new TrafficLight(this, i, orientations[i]);
+                mContainer.addCell();
+            }
+            Utility.updateGroups();
+
+            startShow();
+        }
     }
 
     private void submitTempo(int tempo) {

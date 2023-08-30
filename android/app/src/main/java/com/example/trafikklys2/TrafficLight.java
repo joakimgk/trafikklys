@@ -28,6 +28,21 @@ public class TrafficLight extends FrameLayout
 		init(context, null);
 	}
 
+	public TrafficLight(Context context, int x)
+	{
+		super(context);
+		cellX = x;
+		init(context, null);
+	}
+
+	public TrafficLight(Context context, int x, int orientation)
+	{
+		super(context);
+		cellX = x;
+		mOrientation = orientation;
+		init(context, null);
+	}
+
 	public TrafficLight(Context context, @Nullable AttributeSet attrs)
 	{
 		super(context, attrs);
