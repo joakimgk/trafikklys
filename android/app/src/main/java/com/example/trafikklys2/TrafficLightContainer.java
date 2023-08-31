@@ -2,6 +2,7 @@ package com.example.trafikklys2;
 
 import android.content.Context;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -84,6 +85,16 @@ public class TrafficLightContainer extends FrameLayout
 		// We assume a size that doesn't care about the size of the children, and know exactly
 		// what we want our children to be, so we just let the default FrameLayout do its thing here.
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+
+		int numCells = 0;
+		for (int i = 0; i < getChildCount(); i++) {
+			final TrafficLight child = ( TrafficLight ) getChildAt(i);
+			if (child.getCellOrientation() % 180 == 90) numCells += 3;
+			else numCells++;
+		}
+		int widthDp = this.getMeasuredWidth();
+		setCellSize((float)widthDp / (Math.max(numCells, 7) * 3));
+
 	}
 
 	private void update()
