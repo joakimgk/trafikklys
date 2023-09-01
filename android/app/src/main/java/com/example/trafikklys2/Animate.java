@@ -76,13 +76,42 @@ public class Animate {
         return count;
     }
 
-    private static byte[] concat(byte[] a, byte[] b) {
+    public static byte[] concat(byte[] a, byte[] b) {
         int len = a.length + b.length;
         byte[] newArray = new byte[len];
         for (int i = 0; i < len; i++) {
             newArray[i] = i < a.length ? a[i] : b[i - a.length];
         }
         return newArray;
+    }
+
+    private static byte[] repeat(byte b, int num) {
+        byte[] newBytes = new byte[num];
+        for (int i = 0; i < num; i++) {
+            newBytes[i] = b;
+        }
+        return newBytes;
+    }
+
+    private static byte[] timeShift(byte[] b) {
+        int len = b.length;
+        int n = (int)Math.ceil((double)len/ 2.0);
+        int newLen = n * (n + 1) - (n % 2);
+        byte[] newArray = new byte[newLen];
+        int pos = 0;
+        for (int i = 0; i < len; i++) {
+            newArray = replace(newArray, repeat(b[i], Math.abs(n - i)), pos);
+            pos += Math.abs(n - i);
+        }
+        return newArray;
+    }
+
+    public static ArrayList<Program> Pendulum() {
+        ArrayList<Program> program = Wave();
+        for (Program p : program) {
+            p.mProgram = timeShift(p.mProgram);
+        }
+        return program;
     }
 
     public static ArrayList<Program> Sink() {
