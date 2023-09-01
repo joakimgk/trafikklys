@@ -12,8 +12,8 @@
 #define MAX_LENGTH 256
 #define MAX_CLIENTS 10
 
-#define TIMER_DELAY 2500
-#define TICKS_MAX 3000
+#define TIMER_DELAY 7000
+#define TICKS_MAX 5000
 #define PING_TIME 2000
 #define RESET_TIME 500
 
@@ -28,7 +28,7 @@ int state = LOW;
 const uint32 clientID = system_get_chip_id();
 char clientIDstring[9];
 
-bool running = false;
+bool running = true;
 
 volatile unsigned int tempo = 100;
 char program[MAX_LENGTH];
@@ -152,10 +152,12 @@ void loop() {
       }
     }
   }
+  /*
   if (!running) {
     delay(100);
     return;
   }
+  */
 
   // UDP
   int packetSize = UDP.parsePacket();
@@ -170,33 +172,7 @@ void loop() {
     Serial.print("Packet received: ");
     Serial.println(packet);
 
-    if (packet[0] == 0x06) {  // ping
-      timeSincePing = 0;
-      if (master) {
-        master = false;  // some other master out there! yield
-        digitalWrite(MASTER_LED, LOW);
-      }
-      char pingResponse[] = { 0x07, 0x04, packet[2], clientIDstring[0], clientIDstring[1], clientIDstring[2], '\0' };  // reply with same pingId, plus my ID
-      UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
-      UDP.write(pingResponse);
-      UDP.endPacket();
-    }
-
-    if (packet[0] == 0x07) {  // ping response (master only receives this...)
-      Serial.print("MASTER\tReceived ping response with ID: ");
-      Serial.print(packet[2]);
-      Serial.print(" (current pingId is ");
-      Serial.print(pingId);
-      Serial.println(")");
-
-      if (packet[2] == pingId) {
-        if (j < MAX_CLIENTS) {
-          jitter[j++] = timeSincePing;  // record time of arrival
-        }
-      } else {
-        pingUnsync = true;
-      }
-    }
+    handlePayload(packet);
   }
 
   if (timeSincePing > TICKS_MAX) {
@@ -205,6 +181,7 @@ void loop() {
     master = true;
     digitalWrite(MASTER_LED, HIGH);
   }
+  
   if (master) {
     if (timeSincePing > PING_TIME) {
       if (!pingUnsync && j > 0) {
@@ -336,6 +313,39 @@ void handlePayload(char payload[]) {
     case 0x05: // RESET / SYNC 
       if (!master) {
         step = payload[2] + 1;
+      }
+      break;
+
+
+    case 0x06: { // PING
+      timeSincePing = 0;
+      if (master) {
+        master = false;  // some other master out there! yield
+        digitalWrite(MASTER_LED, LOW);
+      }
+      // The switch statement does not like for you to define local variables, unless the entire case statement is a block
+      char pingResponse[] = { 0x07, 0x04, payload[2], clientIDstring[0], clientIDstring[1], clientIDstring[2], '\0' };  // reply with same pingId, plus my ID
+      UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
+      UDP.write(pingResponse);
+      UDP.endPacket();
+      
+      break;
+    }
+    
+
+    case 0x07:  // ping response (master only receives this...)
+      Serial.print("MASTER\tReceived ping response with ID: ");
+      Serial.print(payload[2]);
+      Serial.print(" (current pingId is ");
+      Serial.print(pingId);
+      Serial.println(")");
+
+      if (payload[2] == pingId) {
+        if (j < MAX_CLIENTS) {
+          jitter[j++] = timeSincePing;  // record time of arrival
+        }
+      } else {
+        pingUnsync = true;
       }
       break;
       
