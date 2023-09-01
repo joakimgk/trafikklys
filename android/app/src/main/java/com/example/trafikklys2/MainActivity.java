@@ -10,6 +10,8 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -22,7 +24,9 @@ import androidx.appcompat.app.AppCompatActivity;
 public class MainActivity extends AppCompatActivity {
 
     ScanTask networktask;
-    TextView notif, ipfield, tempoIndicator;
+    static TextView notif;
+    TextView ipfield;
+    TextView tempoIndicator;
     View cancelButton, setupButton, tempoMinusButton, tempoPlusButton, changeProgram, resetProgram, calibrateButton, testUDPButton;
     SeekBar tempoSlider;
     //ArrayList<Client> clients = new ArrayList<>();
@@ -72,16 +76,27 @@ public class MainActivity extends AppCompatActivity {
 
     private static Iterator<Client> mClientIterator;
 
+    static int mNumConfigured = 0;
     public static void mapClientTrafficLight() {
         if (mClientIterator.hasNext()) {
             Utility._mapClient = mClientIterator.next();
             broadcast(PAUSE);
-            Utility._mapClient.transmit(programPayload(IDENTIFY));
-            byte[] payload = {4, 1, 0};  // reset (restart)
-            Utility._mapClient.transmit(payload);
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            mNumConfigured++;
+            notif.setText(mNumConfigured + " / " + Utility.clients.size() + " configured");
+            byte[] resetMessage = {4, 1, 0};  // reset (restart)
+            Utility._mapClient.transmit(
+                    Animate.concat(programPayload(IDENTIFY), resetMessage)
+            );
+
         } else {
             mContainer.mAssigning = false;
             startShow();
+            notif.setText("Configure done!");
             /*
             broadcast(programPayload(CALIBRATE));
             byte[] payload = {4, 1, 0};  // reset (restart)
@@ -94,13 +109,21 @@ public class MainActivity extends AppCompatActivity {
         Utility.updateGroups();
         //transmitProgram(Animate.Trail());
         //transmitProgram(Animate.Wave());
-        ArrayList<Program> p = Animate.Sink();
-        transmitProgram(Animate.Sink());
+        //transmitProgram(Animate.Sink());
+        //transmitProgram(Animate.Pendulum());
+
+        ArrayList<Program> p = Animate.Trail();
+        transmitProgram(Animate.Trail());
     }
 
     private static void transmitProgram(ArrayList<Program> program) {
         for (Program p : program) {
             p.mClient.transmit(programPayload(p.mProgram));
+        }
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
         byte[] payload = {4, 1, 0};  // reset (restart)
         broadcast(payload);
@@ -212,10 +235,18 @@ public class MainActivity extends AppCompatActivity {
         setupButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                mNumConfigured = 0;
+
                 if (mContainer.mAssigning) {
                     mContainer.mAssigning = false;
+                    Log.v("JOAKIM", "Aborting setup...");
                     return;
                 }
+                notif.setText(Utility.clients.size() + " clients connected: Please configure");
+
+                byte[] nullProgram = { 3, 1, 0 };
+                byte[] resetMsg = {4, 1, 0};
+                broadcast(Animate.concat(nullProgram, resetMsg));
                 mContainer.mAssigning = true;
                 mClientIterator = Utility.clients.iterator();
                 mapClientTrafficLight();
@@ -278,8 +309,8 @@ public class MainActivity extends AppCompatActivity {
 
         if (false) {
             // test:
-            int numClients = 6;
-            int[] orientations = { 0, 90, 270, 90, 270, 180};
+            int numClients = 3;
+            int[] orientations = { 0, 90, 0};
             Utility.clients = new ArrayList<>(numClients);
             for (int i = 0; i < numClients; i++) {
                 Client c = new Client((long)i);
@@ -407,10 +438,25 @@ That said, "redir add tcp:10001:10001" on the emulator console should make it po
     }
 
     private static void broadcast(byte[] payload) {
-        for (Client client : Utility.clients) {
-            client.transmit(payload);
-        }
+        new BroadcastTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, payload);
     }
 
+    public static class BroadcastTask extends AsyncTask<byte[], byte[], Boolean> {
+
+        @Override
+        protected Boolean doInBackground(byte[]... params) {
+            try {
+                DatagramSocket socket = new DatagramSocket();
+                InetAddress IPAddress = InetAddress.getByName("255.255.255.255");
+                DatagramPacket sendPacket = new DatagramPacket(params[0], params[0].length, IPAddress, 4210);
+                socket.send(sendPacket);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
+            return true;
+        }
+    }
 
 }

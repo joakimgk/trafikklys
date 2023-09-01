@@ -51,7 +51,7 @@ public class Client {
     boolean isBusy = false;
 
     public void transmit(byte[] payload) {
-        new SendTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, payload);
+        new SendTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, payload);
     }
 
     public class ReadTask extends AsyncTask<byte[], byte[], Boolean> {
@@ -134,9 +134,9 @@ public class Client {
 
         @Override
         protected Boolean doInBackground(byte[]... params) { //This runs on a different thread
-            Log.i("SendTask", "transmit " + params[0].length + " bytes");
+            Log.i("SendTask", "transmit command 0x0" + params[0][0] + " (" + params[0].length + " bytes)");
 
-            while (nsocket == null || !nsocket.isConnected() || isBusy) {
+            while (nsocket == null || !nsocket.isConnected()) {  // || isBusy) {
                 try {
                     Thread.sleep(500);
                     Log.i("SendTask", "Client (send thread) busy...");
