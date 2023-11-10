@@ -4,7 +4,6 @@
 #include <Ticker.h>
 
 #define PORT 10000
-#define HOST "192.168.55.234"
 
 #define UDP_PORT 4210
 #define UDP_HOST "0.0.0.0"
@@ -18,9 +17,9 @@
 #define RESET_TIME 500
 
 char buffer[MAX_LENGTH];
-const short int GREEN = 2;
-const short int YELLOW = 4;
-const short int RED = 5;
+const short int GREEN = 3;  // remap RX
+const short int YELLOW = 0;
+const short int RED = 2;
 
 const short int MASTER_LED = 15;
 int state = LOW;
@@ -78,6 +77,10 @@ void ICACHE_RAM_ATTR onTime() {
 
 void setup() {
   Serial.begin(115200);
+
+  //GPIO 3 (RX) swap the pin to a GPIO.
+  pinMode(RED, FUNCTION_3); 
+
   pinMode(GREEN, OUTPUT);
   pinMode(YELLOW, OUTPUT);
   pinMode(RED, OUTPUT);
@@ -92,8 +95,8 @@ void setup() {
 
   //WiFi.begin(ssid, password);             // Connect to the network
   WiFiManager wifiManager;
-  wifiManager.setConnectTimeout(10);
-  wifiManager.setConnectRetries(6);
+  wifiManager.setConnectTimeout(4);
+  wifiManager.setConnectRetries(4);
   wifiManager.setConfigPortalTimeout(60);
 
   // fetches ssid and pass from eeprom and tries to connect
@@ -103,16 +106,6 @@ void setup() {
   
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
-
-  if (!client.connect(HOST, PORT)) {
-    Serial.println("Connection to trafikklys host failed -- running offline");
-    offline = true;
-  } else {
-    Serial.println("Connected to server at " + (String)HOST + ":" + (String)PORT);
-   
-    sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
-    client.write(sendBuffer);
-  }
 
   // Begin listening to UDP port
   UDP.begin(UDP_PORT);
@@ -126,7 +119,6 @@ void setup() {
 
   timer1_attachInterrupt(onTime); // Add ISR Function
   timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);  //NB!! Crystal is 26MHz!! Not 80!
-
   // Arm the Timer for our 0.2s Interval
   timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 }
@@ -134,6 +126,24 @@ void setup() {
 char packet[255];
 char pingId = '\0';
 bool pingUnsync = false;
+
+
+
+void connectToServer(IPAddress ip) {
+  if (!client.connect(ip, PORT)) {
+    offline = true;
+    Serial.println("Connection to trafikklys host failed -- running offline");
+  } else {
+    offline = false;
+
+    Serial.print("Connected to server at ");
+    Serial.print(ip);
+    Serial.println(":" + (String)PORT);
+   
+    sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
+    client.write(sendBuffer);
+  }
+}
 
 void loop() {
 
@@ -171,6 +181,10 @@ void loop() {
     }
     Serial.print("Packet received: ");
     Serial.println(packet);
+
+    if (!client.connected()) {
+      connectToServer(UDP.remoteIP());
+    }
 
     handlePayload(packet);
   }
@@ -228,6 +242,7 @@ void loop() {
   }
 
   delay(100);
+
 }
 
 void printByte(unsigned char b) {
@@ -237,7 +252,7 @@ void printByte(unsigned char b) {
 }
 
 ICACHE_RAM_ATTR int getBit(unsigned char b, int i) {
-  return ((b >> i) & 0b00000001) == 1 ? HIGH : LOW;
+  return ((b >> i) & 0b00000001) == 1 ? LOW : HIGH;
 }
 
 ICACHE_RAM_ATTR void blink() {
