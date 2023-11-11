@@ -16,7 +16,9 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Trafikklys.NoActionBar">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

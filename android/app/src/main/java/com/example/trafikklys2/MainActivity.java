@@ -31,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     SeekBar tempoSlider;
     //ArrayList<Client> clients = new ArrayList<>();
     ArrayList<Message> messages = new ArrayList<>();
+    boolean isRunning = true;
 
     public int calibrate_index = -1;
 
@@ -39,8 +40,11 @@ public class MainActivity extends AppCompatActivity {
     public static byte YLW = (byte) 0b00000010;
     public static byte GRN = (byte) 0b00000100;
 
+    public static byte ALL = (byte) 0b00000111;
+
     public static final byte[] IDENTIFY  = {
-           YLW
+            ALL,
+            NON
     };
 
     public static final byte[] CALIBRATE = {
@@ -62,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
                     GRN, YLW, RED, YLW
             },
             {
-                    (byte) (RED & GRN), YLW, (byte) (RED & GRN)
+                    (byte) (RED | GRN), YLW, (byte) (RED | GRN)
             }
     };
 
@@ -77,28 +81,48 @@ public class MainActivity extends AppCompatActivity {
     private static Iterator<Client> mClientIterator;
 
     static int mNumConfigured = 0;
+    private PingTask pingTask;
+
+    static byte[] resetMessage = {4, 1, 0};  // reset (restart)
+
     public static void mapClientTrafficLight() {
         if (mClientIterator.hasNext()) {
+            if (Utility._mapClient != null) {
+                //byte[] configDoneMessage = {0x0A, 1, 0};  // config done
+                //Utility._mapClient.transmit(configDoneMessage);
+                // stop blinking (static program to indicate done)
+                Utility._mapClient.transmit(
+                        Animate.concat(programPayload(new byte[]{ALL}), resetMessage)
+                );
+            }
+
             Utility._mapClient = mClientIterator.next();
-            broadcast(PAUSE);
+            /*broadcast(PAUSE);
             try {
                 Thread.sleep(2000);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
+             */
             mNumConfigured++;
             notif.setText(mNumConfigured + " / " + Utility.clients.size() + " configured");
-            byte[] resetMessage = {4, 1, 0};  // reset (restart)
             Utility._mapClient.transmit(
                     Animate.concat(programPayload(IDENTIFY), resetMessage)
             );
 
         } else {
+
             mContainer.mAssigning = false;
             startShow();
             notif.setText("Configure done!");
+
             /*
             broadcast(programPayload(CALIBRATE));
+            try {
+                Thread.sleep(700);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             byte[] payload = {4, 1, 0};  // reset (restart)
             broadcast(payload);
              */
@@ -172,7 +196,18 @@ public class MainActivity extends AppCompatActivity {
             }
 
             public void onStopTrackingTouch(SeekBar seekBar) {
-                submitTempo(tempo);
+                tempoIndicator.setText("tempo: " + tempo);
+
+                // repeat large tempo changes 3 times, in case of packet loss
+                for (int i = 0; i < 3; i++) {
+                    submitTempo(tempo);
+
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
             }
         });
 
@@ -193,13 +228,13 @@ public class MainActivity extends AppCompatActivity {
                 if (program == PROGRAMS.length) program = 0;
                 int len = PROGRAMS[program].length;
                 Log.v("JOAKIM", "Send program #" + program + " (" + len + " bytes)");
-                if (Utility.clients.size() < 1) {
-                    Log.e("MainActivity", "No clients");
-                } else {
+                //if (Utility.clients.size() < 1) {
+                //    Log.e("MainActivity", "No clients");
+                //} else {
                     broadcast(programPayload(PROGRAMS[program]));
                     // TODO: Send different parts of program to different clients...
                     //clients.get(0).transmit(payload);
-                }
+                //}
             }
         });
 
@@ -287,6 +322,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 tempo -= 1;
+                tempoIndicator.setText("tempo: " + tempo);
                 submitTempo(tempo);
             }
         });
@@ -295,6 +331,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 tempo += 1;
+                tempoIndicator.setText("tempo: " + tempo);
                 submitTempo(tempo);
             }
         });
@@ -306,6 +343,9 @@ public class MainActivity extends AppCompatActivity {
         mContainer = findViewById(R.id.traffic_light_container);
         networktask = new ScanTask(); //Create initial instance so SendDataToNetwork doesn't throw an error.
         networktask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, ip);
+        
+        pingTask = new PingTask();
+        pingTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
 
         if (false) {
             // test:
@@ -324,19 +364,28 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void submitTempo(int tempo) {
+    private void submitTempo(int tmpo) {
+        if (tmpo < 0) tmpo = 1;
+        if (tmpo > 255) tmpo = 255;
+        //Log.v("JOAKIM", "Send +tempo: " + tmpo);
+        byte[] payload = {1, 1, (byte) tmpo};
+        broadcast(payload);
 
-        if (tempo < 0) tempo = 1;
-        if (tempo > 255) tempo = 255;
+    }
 
-        Log.v("JOAKIM", "Send +tempo: " + tempo);
-        tempoIndicator.setText("tempo: " + tempo);
-        byte[] payload = {1, 1, (byte) tempo};
-        if (Utility.clients.size() < 1) {
-            Log.e("MainActivity", "No clients");
-        } else {
-            broadcast(payload);
-            //clients.get(0).transmit(payload);
+    public class PingTask extends AsyncTask<Void, Void, Boolean> {
+        
+        @Override
+        protected Boolean doInBackground(Void... voids) {
+            while(isRunning && Utility.clients.size() < 2) {
+                submitTempo(tempo);
+                try {
+                    Thread.sleep(5*1000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            return null;
         }
     }
 
