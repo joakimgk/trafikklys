@@ -21,7 +21,6 @@ const short int GREEN = 3;  // remap RX
 const short int YELLOW = 0;
 const short int RED = 2;
 
-const short int MASTER_LED = 15;
 int state = LOW;
 
 const uint32 clientID = system_get_chip_id();
@@ -32,10 +31,11 @@ bool running = true;
 volatile unsigned int tempo = 100;
 char program[MAX_LENGTH];
 char rec_program[MAX_LENGTH];
-volatile int length = 4;
+volatile int length;
 int rec_length;
 volatile int step = 0;
 
+bool DO_MASTER_SYNC = false;
 bool offline = false;
 bool master = false;
 
@@ -85,8 +85,15 @@ void setup() {
   pinMode(YELLOW, OUTPUT);
   pinMode(RED, OUTPUT);
 
-  pinMode(MASTER_LED, OUTPUT);
-  digitalWrite(MASTER_LED, LOW);
+  length = 2;
+  tempo = 200;
+  program[0] = 0b00000111;
+  program[1] = 0b00000000;
+  
+  timer1_attachInterrupt(onTime); // Add ISR Function
+  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);  //NB!! Crystal is 26MHz!! Not 80!
+  // Arm the Timer for our 0.2s Interval
+  timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 
   sprintf(clientIDstring, "%08x", clientID);
   Serial.println("\nTrafikklys 3.2\n");
@@ -98,6 +105,8 @@ void setup() {
   wifiManager.setConnectTimeout(4);
   wifiManager.setConnectRetries(4);
   wifiManager.setConfigPortalTimeout(60);
+  wifiManager.setAPCallback(configModeCallback);
+  wifiManager.setConfigPortalTimeoutCallback(configModeExitCallback);
 
   // fetches ssid and pass from eeprom and tries to connect
   // if it does not connect it starts an access point with the specified name
@@ -107,27 +116,55 @@ void setup() {
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
 
+  length = 2;
+  tempo = 100;
+  program[0] = 0b00000010;
+  program[1] = 0b00000000;
+
+
   // Begin listening to UDP port
   UDP.begin(UDP_PORT);
   Serial.print("Listening on UDP port ");
   Serial.println(UDP_PORT);
 
+  // wait for an UDP packet, to get the IP address of the server
+  while (!client.connected()) {
+    readUDP();
+    delay(500);
+    Serial.print(".");
+  }
+
+  length = 1;
+  program[0] = 0b00000100;
+  Serial.println("CONNECTED!");
+
+/*
+  delay(1000);
+  length = 4;
   program[0] = 0b00000001;
   program[1] = 0b00000010;
   program[2] = 0b00000100;
   program[3] = 0b00000010;
-
-  timer1_attachInterrupt(onTime); // Add ISR Function
-  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);  //NB!! Crystal is 26MHz!! Not 80!
-  // Arm the Timer for our 0.2s Interval
-  timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
+  */
 }
 
 char packet[255];
 char pingId = '\0';
 bool pingUnsync = false;
 
+void configModeCallback (WiFiManager *myWiFiManager) {
+  length = 2;
+  program[0] = 0b00000001;
+  program[1] = 0b00000000;
 
+  Serial.println("Entered config mode");
+  Serial.println(WiFi.softAPIP());
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+}
+
+void configModeExitCallback () {
+  ESP.restart();
+}
 
 void connectToServer(IPAddress ip) {
   if (!client.connect(ip, PORT)) {
@@ -145,31 +182,7 @@ void connectToServer(IPAddress ip) {
   }
 }
 
-void loop() {
-
-  // TCP
-  if (client.connected()) {
-    int b = client.available();
-    if (b > 0) {
-      if (b > MAX_LENGTH) {
-        Serial.println("Packet size " + (String)b + " larger than buffer " + (String)MAX_LENGTH);
-      } else {
-        client.readBytes(buffer, b);
-        buffer[b] = '\0';
-        Serial.println("Read " + (String)b + " bytes: " + (String)buffer);
-
-        handlePayload(buffer);
-      }
-    }
-  }
-  /*
-  if (!running) {
-    delay(100);
-    return;
-  }
-  */
-
-  // UDP
+void readUDP() {
   int packetSize = UDP.parsePacket();
   if (packetSize) {
     Serial.print("Received packet! Size: ");
@@ -188,14 +201,55 @@ void loop() {
 
     handlePayload(packet);
   }
+}
+
+
+void printBytes(char buf[], int len) {;
+  Serial.print((String)len + " bytes:\t");
+  for (int s = 0; s < len; s++) {
+    Serial.print(buf[s]);
+  }
+  Serial.println("");
+}
+
+void loop() {
+
+  // TCP
+  if (client.connected()) {
+    int b = client.available();
+    if (b > 0) {
+      if (b > MAX_LENGTH) {
+        Serial.println("Packet size " + (String)b + " larger than buffer " + (String)MAX_LENGTH);
+      } else {
+        client.readBytes(buffer, b);
+        buffer[b] = '\0';
+        printBytes(buffer, b);
+
+        handlePayload(buffer);
+      }
+    }
+  }
+  /*
+  if (!running) {
+    delay(100);
+    return;
+  }
+  */
+
+  readUDP();
+
+  
+  delay(100);
+
+  if (!DO_MASTER_SYNC) {
+    return;
+  }
 
   if (timeSincePing > TICKS_MAX) {
     Serial.println("ping timeout: claiming master...");
     // become master
     master = true;
-    digitalWrite(MASTER_LED, HIGH);
   }
-  
   if (master) {
     if (timeSincePing > PING_TIME) {
       if (!pingUnsync && j > 0) {
@@ -242,7 +296,6 @@ void loop() {
   }
 
   delay(100);
-
 }
 
 void printByte(unsigned char b) {
@@ -273,14 +326,18 @@ ICACHE_RAM_ATTR void blink() {
 }
 
 void handlePayload(char payload[]) {
-
-  Serial.println("handlePayload [" + (String)payload + "]");
   char command = payload[0];
   int len = (int)payload[1];
+
+  Serial.print("handlePayload ");
+  printBytes(payload, len + 2);
+
   uint16_t test;
   uint8_t i;
   
   switch (command) {
+
+    /*
     case 0x00: // STOP / PAUSE
       running = false;
       break;
@@ -288,6 +345,7 @@ void handlePayload(char payload[]) {
     case 0x0A:  // START / RESUME
       running = true;
       break;
+      */
       
     case 0x01:  // TEMPO
       test = payload[2];
@@ -336,7 +394,6 @@ void handlePayload(char payload[]) {
       timeSincePing = 0;
       if (master) {
         master = false;  // some other master out there! yield
-        digitalWrite(MASTER_LED, LOW);
       }
       // The switch statement does not like for you to define local variables, unless the entire case statement is a block
       char pingResponse[] = { 0x07, 0x04, payload[2], clientIDstring[0], clientIDstring[1], clientIDstring[2], '\0' };  // reply with same pingId, plus my ID
@@ -370,6 +427,7 @@ void handlePayload(char payload[]) {
 
   payload = payload + len + 2;
   if (payload[0] != '\0') {
-      handlePayload(payload);
+    Serial.println("\tMORE TO PROCESS!");
+    handlePayload(payload);
   }
 }
