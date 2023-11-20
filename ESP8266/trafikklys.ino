@@ -13,7 +13,7 @@
 #define MAX_LENGTH 256
 #define MAX_CLIENTS 10
 
-#define TIMER_DELAY 7000
+#define TIMER_DELAY 7000 
 #define TICKS_MAX 5000
 #define PING_TIME 2000
 #define RESET_TIME 500
@@ -43,7 +43,7 @@ bool DO_MASTER_SYNC = false;
 bool offline = false;
 bool master = false;
 
-WiFiClient client;
+AsyncClient* client;
 WiFiUDP UDP;
 Ticker timer;
 
@@ -132,7 +132,7 @@ void setup() {
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
 
-  AsyncClient* client = new AsyncClient;
+  client = new AsyncClient;
 
   length = 2;
   tempo = 100;
@@ -162,10 +162,12 @@ void setup() {
     Serial.print(".");
   }
 
-
   length = 1;
   program[0] = 0b00000100;
-  Serial.println("CONNECTED!");
+
+  // send clientID, to complete setup
+  sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
+  send(sendBuffer);
 
 /*
   delay(1000);
@@ -175,6 +177,18 @@ void setup() {
   program[2] = 0b00000100;
   program[3] = 0b00000010;
   */
+}
+
+void send(char data[]) {
+  Serial.println("Send: " + (String)data);
+  Serial.println(client->space());
+  Serial.println(client->canSend() ? "can send" : "can not send");
+	if (client->space() > 32 && client->canSend()) {
+		client->add(data, strlen(data));
+		client->send();
+	} else {
+    Serial.println("FAILED to send");
+  }
 }
 
 char packet[255];
