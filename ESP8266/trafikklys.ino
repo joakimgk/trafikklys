@@ -43,7 +43,7 @@ bool DO_MASTER_SYNC = false;
 bool offline = false;
 bool master = false;
 
-AsyncClient* client;
+static AsyncClient* client = NULL;
 WiFiUDP UDP;
 Ticker timer;
 
@@ -85,7 +85,9 @@ static void handleData(void* arg, AsyncClient* client, void *data, size_t len) {
 }
 
 void onConnect(void* arg, AsyncClient* client) {
-	Serial.printf("\n client has been connected to %s on port %d \n", remoteAddress, PORT);
+	Serial.print("client has been connected to ");
+  Serial.print(remoteAddress);
+  Serial.println(" on port " + PORT);
 }
 
 
@@ -165,9 +167,15 @@ void setup() {
   length = 1;
   program[0] = 0b00000100;
 
+  delay(2000);
+
+  Serial.println("bare en test!");
+  client->write("bare en test!");
+
   // send clientID, to complete setup
   sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
-  send(sendBuffer);
+  Serial.println(sendBuffer);
+  client->write(sendBuffer);
 
 /*
   delay(1000);
@@ -181,6 +189,7 @@ void setup() {
 
 void send(char data[]) {
   Serial.println("Send: " + (String)data);
+  Serial.println(client->state());
   Serial.println(client->space());
   Serial.println(client->canSend() ? "can send" : "can not send");
 	if (client->space() > 32 && client->canSend()) {
