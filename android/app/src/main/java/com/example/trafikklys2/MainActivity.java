@@ -142,15 +142,11 @@ public class MainActivity extends AppCompatActivity {
 
     private static void transmitProgram(ArrayList<Program> program) {
         for (Program p : program) {
-            p.mClient.transmit(programPayload(p.mProgram));
+            p.mClient.transmit(
+                    Animate.concat(programPayload(p.mProgram), resetMessage)
+                    );
         }
-        try {
-            Thread.sleep(500);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        byte[] payload = {4, 1, 0};  // reset (restart)
-        broadcast(payload);
+       
     }
 
 
