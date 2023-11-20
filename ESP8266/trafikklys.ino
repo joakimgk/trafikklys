@@ -4,7 +4,6 @@
 #include <Ticker.h>
 
 #define PORT 10000
-#define HOST "192.168.55.234"
 
 #define UDP_PORT 4210
 #define UDP_HOST "0.0.0.0"
@@ -12,31 +11,31 @@
 #define MAX_LENGTH 256
 #define MAX_CLIENTS 10
 
-#define TIMER_DELAY 2500
-#define TICKS_MAX 3000
+#define TIMER_DELAY 7000
+#define TICKS_MAX 5000
 #define PING_TIME 2000
 #define RESET_TIME 500
 
 char buffer[MAX_LENGTH];
-const short int GREEN = 2;
-const short int YELLOW = 4;
-const short int RED = 5;
+const short int GREEN = 3;  // remap RX
+const short int YELLOW = 0;
+const short int RED = 2;
 
-const short int MASTER_LED = 15;
 int state = LOW;
 
 const uint32 clientID = system_get_chip_id();
 char clientIDstring[9];
 
-bool running = false;
+bool running = true;
 
 volatile unsigned int tempo = 100;
 char program[MAX_LENGTH];
 char rec_program[MAX_LENGTH];
-volatile int length = 4;
+volatile int length;
 int rec_length;
 volatile int step = 0;
 
+bool DO_MASTER_SYNC = false;
 bool offline = false;
 bool master = false;
 
@@ -78,12 +77,23 @@ void ICACHE_RAM_ATTR onTime() {
 
 void setup() {
   Serial.begin(115200);
+
+  //GPIO 3 (RX) swap the pin to a GPIO.
+  pinMode(RED, FUNCTION_3); 
+
   pinMode(GREEN, OUTPUT);
   pinMode(YELLOW, OUTPUT);
   pinMode(RED, OUTPUT);
 
-  pinMode(MASTER_LED, OUTPUT);
-  digitalWrite(MASTER_LED, LOW);
+  length = 2;
+  tempo = 200;
+  program[0] = 0b00000111;
+  program[1] = 0b00000000;
+  
+  timer1_attachInterrupt(onTime); // Add ISR Function
+  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);  //NB!! Crystal is 26MHz!! Not 80!
+  // Arm the Timer for our 0.2s Interval
+  timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 
   sprintf(clientIDstring, "%08x", clientID);
   Serial.println("\nTrafikklys 3.2\n");
@@ -92,9 +102,11 @@ void setup() {
 
   //WiFi.begin(ssid, password);             // Connect to the network
   WiFiManager wifiManager;
-  wifiManager.setConnectTimeout(10);
-  wifiManager.setConnectRetries(6);
+  wifiManager.setConnectTimeout(4);
+  wifiManager.setConnectRetries(4);
   wifiManager.setConfigPortalTimeout(60);
+  wifiManager.setAPCallback(configModeCallback);
+  wifiManager.setConfigPortalTimeoutCallback(configModeExitCallback);
 
   // fetches ssid and pass from eeprom and tries to connect
   // if it does not connect it starts an access point with the specified name
@@ -104,60 +116,73 @@ void setup() {
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
 
-  if (!client.connect(HOST, PORT)) {
-    Serial.println("Connection to trafikklys host failed -- running offline");
-    offline = true;
-  } else {
-    Serial.println("Connected to server at " + (String)HOST + ":" + (String)PORT);
-   
-    sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
-    client.write(sendBuffer);
-  }
+  length = 2;
+  tempo = 100;
+  program[0] = 0b00000010;
+  program[1] = 0b00000000;
+
 
   // Begin listening to UDP port
   UDP.begin(UDP_PORT);
   Serial.print("Listening on UDP port ");
   Serial.println(UDP_PORT);
 
+  // wait for an UDP packet, to get the IP address of the server
+  while (!client.connected()) {
+    readUDP();
+    delay(500);
+    Serial.print(".");
+  }
+
+  length = 1;
+  program[0] = 0b00000100;
+  Serial.println("CONNECTED!");
+
+/*
+  delay(1000);
+  length = 4;
   program[0] = 0b00000001;
   program[1] = 0b00000010;
   program[2] = 0b00000100;
   program[3] = 0b00000010;
-
-  timer1_attachInterrupt(onTime); // Add ISR Function
-  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);  //NB!! Crystal is 26MHz!! Not 80!
-
-  // Arm the Timer for our 0.2s Interval
-  timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
+  */
 }
 
 char packet[255];
 char pingId = '\0';
 bool pingUnsync = false;
 
-void loop() {
+void configModeCallback (WiFiManager *myWiFiManager) {
+  length = 2;
+  program[0] = 0b00000001;
+  program[1] = 0b00000000;
 
-  // TCP
-  if (client.connected()) {
-    int b = client.available();
-    if (b > 0) {
-      if (b > MAX_LENGTH) {
-        Serial.println("Packet size " + (String)b + " larger than buffer " + (String)MAX_LENGTH);
-      } else {
-        client.readBytes(buffer, b);
-        buffer[b] = '\0';
-        Serial.println("Read " + (String)b + " bytes: " + (String)buffer);
+  Serial.println("Entered config mode");
+  Serial.println(WiFi.softAPIP());
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+}
 
-        handlePayload(buffer);
-      }
-    }
+void configModeExitCallback () {
+  ESP.restart();
+}
+
+void connectToServer(IPAddress ip) {
+  if (!client.connect(ip, PORT)) {
+    offline = true;
+    Serial.println("Connection to trafikklys host failed -- running offline");
+  } else {
+    offline = false;
+
+    Serial.print("Connected to server at ");
+    Serial.print(ip);
+    Serial.println(":" + (String)PORT);
+   
+    sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
+    client.write(sendBuffer);
   }
-  if (!running) {
-    delay(100);
-    return;
-  }
+}
 
-  // UDP
+void readUDP() {
   int packetSize = UDP.parsePacket();
   if (packetSize) {
     Serial.print("Received packet! Size: ");
@@ -170,40 +195,60 @@ void loop() {
     Serial.print("Packet received: ");
     Serial.println(packet);
 
-    if (packet[0] == 0x06) {  // ping
-      timeSincePing = 0;
-      if (master) {
-        master = false;  // some other master out there! yield
-        digitalWrite(MASTER_LED, LOW);
-      }
-      char pingResponse[] = { 0x07, 0x04, packet[2], clientIDstring[0], clientIDstring[1], clientIDstring[2], '\0' };  // reply with same pingId, plus my ID
-      UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
-      UDP.write(pingResponse);
-      UDP.endPacket();
+    if (!client.connected()) {
+      connectToServer(UDP.remoteIP());
     }
 
-    if (packet[0] == 0x07) {  // ping response (master only receives this...)
-      Serial.print("MASTER\tReceived ping response with ID: ");
-      Serial.print(packet[2]);
-      Serial.print(" (current pingId is ");
-      Serial.print(pingId);
-      Serial.println(")");
+    handlePayload(packet);
+  }
+}
 
-      if (packet[2] == pingId) {
-        if (j < MAX_CLIENTS) {
-          jitter[j++] = timeSincePing;  // record time of arrival
-        }
+
+void printBytes(char buf[], int len) {;
+  Serial.print((String)len + " bytes:\t");
+  for (int s = 0; s < len; s++) {
+    Serial.print(buf[s]);
+  }
+  Serial.println("");
+}
+
+void loop() {
+
+  // TCP
+  if (client.connected()) {
+    int b = client.available();
+    if (b > 0) {
+      if (b > MAX_LENGTH) {
+        Serial.println("Packet size " + (String)b + " larger than buffer " + (String)MAX_LENGTH);
       } else {
-        pingUnsync = true;
+        client.readBytes(buffer, b);
+        buffer[b] = '\0';
+        printBytes(buffer, b);
+
+        handlePayload(buffer);
       }
     }
+  }
+  /*
+  if (!running) {
+    delay(100);
+    return;
+  }
+  */
+
+  readUDP();
+
+  
+  delay(100);
+
+  if (!DO_MASTER_SYNC) {
+    return;
   }
 
   if (timeSincePing > TICKS_MAX) {
     Serial.println("ping timeout: claiming master...");
     // become master
     master = true;
-    digitalWrite(MASTER_LED, HIGH);
   }
   if (master) {
     if (timeSincePing > PING_TIME) {
@@ -260,7 +305,7 @@ void printByte(unsigned char b) {
 }
 
 ICACHE_RAM_ATTR int getBit(unsigned char b, int i) {
-  return ((b >> i) & 0b00000001) == 1 ? HIGH : LOW;
+  return ((b >> i) & 0b00000001) == 1 ? LOW : HIGH;
 }
 
 ICACHE_RAM_ATTR void blink() {
@@ -281,14 +326,18 @@ ICACHE_RAM_ATTR void blink() {
 }
 
 void handlePayload(char payload[]) {
-
-  Serial.println("handlePayload [" + (String)payload + "]");
   char command = payload[0];
   int len = (int)payload[1];
+
+  Serial.print("handlePayload ");
+  printBytes(payload, len + 2);
+
   uint16_t test;
   uint8_t i;
   
   switch (command) {
+
+    /*
     case 0x00: // STOP / PAUSE
       running = false;
       break;
@@ -296,6 +345,7 @@ void handlePayload(char payload[]) {
     case 0x0A:  // START / RESUME
       running = true;
       break;
+      */
       
     case 0x01:  // TEMPO
       test = payload[2];
@@ -338,6 +388,38 @@ void handlePayload(char payload[]) {
         step = payload[2] + 1;
       }
       break;
+
+
+    case 0x06: { // PING
+      timeSincePing = 0;
+      if (master) {
+        master = false;  // some other master out there! yield
+      }
+      // The switch statement does not like for you to define local variables, unless the entire case statement is a block
+      char pingResponse[] = { 0x07, 0x04, payload[2], clientIDstring[0], clientIDstring[1], clientIDstring[2], '\0' };  // reply with same pingId, plus my ID
+      UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
+      UDP.write(pingResponse);
+      UDP.endPacket();
+      
+      break;
+    }
+    
+
+    case 0x07:  // ping response (master only receives this...)
+      Serial.print("MASTER\tReceived ping response with ID: ");
+      Serial.print(payload[2]);
+      Serial.print(" (current pingId is ");
+      Serial.print(pingId);
+      Serial.println(")");
+
+      if (payload[2] == pingId) {
+        if (j < MAX_CLIENTS) {
+          jitter[j++] = timeSincePing;  // record time of arrival
+        }
+      } else {
+        pingUnsync = true;
+      }
+      break;
       
     default:
       break;
@@ -345,6 +427,7 @@ void handlePayload(char payload[]) {
 
   payload = payload + len + 2;
   if (payload[0] != '\0') {
-      handlePayload(payload);
+    Serial.println("\tMORE TO PROCESS!");
+    handlePayload(payload);
   }
 }
