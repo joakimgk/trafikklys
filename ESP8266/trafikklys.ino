@@ -1,9 +1,11 @@
 #include <WiFiManager.h>         // https://github.com/tzapu/WiFiManager
 #include <ESP8266WiFi.h>
+#include <ESPAsyncTCP.h>
 #include <WiFiUdp.h>
 #include <Ticker.h>
 
-#define PORT 10000
+
+#define PORT 10000  // TCP
 
 #define UDP_PORT 4210
 #define UDP_HOST "0.0.0.0"
@@ -11,7 +13,7 @@
 #define MAX_LENGTH 256
 #define MAX_CLIENTS 10
 
-#define TIMER_DELAY 7000
+#define TIMER_DELAY 7000 
 #define TICKS_MAX 5000
 #define PING_TIME 2000
 #define RESET_TIME 500
@@ -20,6 +22,8 @@ char buffer[MAX_LENGTH];
 const short int GREEN = 3;  // remap RX
 const short int YELLOW = 0;
 const short int RED = 2;
+
+IPAddress remoteAddress;
 
 int state = LOW;
 
@@ -39,7 +43,7 @@ bool DO_MASTER_SYNC = false;
 bool offline = false;
 bool master = false;
 
-WiFiClient client;
+static AsyncClient* client = NULL;
 WiFiUDP UDP;
 Ticker timer;
 
@@ -72,11 +76,25 @@ void ICACHE_RAM_ATTR onTime() {
     Serial.println("\tMASTER timeSinceReset = " + (String)timeSinceReset);
   }
   */
-
 }
+
+/* event callbacks */
+static void handleData(void* arg, AsyncClient* client, void *data, size_t len) {
+	Serial.printf("\n data received from %s \n", client->remoteIP().toString().c_str());
+	Serial.write((uint8_t*)data, len);
+}
+
+void onConnect(void* arg, AsyncClient* client) {
+	Serial.print("client has been connected to ");
+  Serial.print(remoteAddress);
+  Serial.println(" on port " + PORT);
+}
+
 
 void setup() {
   Serial.begin(115200);
+  while (!Serial && millis() < 5000);
+  delay(200);
 
   //GPIO 3 (RX) swap the pin to a GPIO.
   pinMode(RED, FUNCTION_3); 
@@ -96,7 +114,7 @@ void setup() {
   timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 
   sprintf(clientIDstring, "%08x", clientID);
-  Serial.println("\nTrafikklys 3.2\n");
+  Serial.println("\nTrafikklys 3.3\n");
   Serial.print("ClientID: ");
   Serial.println(clientID);
 
@@ -116,11 +134,12 @@ void setup() {
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
 
+  client = new AsyncClient;
+
   length = 2;
   tempo = 100;
   program[0] = 0b00000010;
   program[1] = 0b00000000;
-
 
   // Begin listening to UDP port
   UDP.begin(UDP_PORT);
@@ -128,15 +147,35 @@ void setup() {
   Serial.println(UDP_PORT);
 
   // wait for an UDP packet, to get the IP address of the server
-  while (!client.connected()) {
-    readUDP();
-    delay(500);
+  while (true) {
+    if (readUDP()) {
+      client->onData(&handleData, client);
+      client->onConnect(&onConnect, client);
+      Serial.print("remoteAddress: ");
+      Serial.println(remoteAddress);
+      if (client->connect(remoteAddress, PORT)) {
+        Serial.println("CONNECTED");
+        break;
+      } else {
+        Serial.println("Connection failed");
+      }
+    }
+    delay(700);
     Serial.print(".");
   }
 
   length = 1;
   program[0] = 0b00000100;
-  Serial.println("CONNECTED!");
+
+  delay(2000);
+
+  Serial.println("bare en test!");
+  client->write("bare en test!");
+
+  // send clientID, to complete setup
+  sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
+  Serial.println(sendBuffer);
+  client->write(sendBuffer);
 
 /*
   delay(1000);
@@ -146,6 +185,19 @@ void setup() {
   program[2] = 0b00000100;
   program[3] = 0b00000010;
   */
+}
+
+void send(char data[]) {
+  Serial.println("Send: " + (String)data);
+  Serial.println(client->state());
+  Serial.println(client->space());
+  Serial.println(client->canSend() ? "can send" : "can not send");
+	if (client->space() > 32 && client->canSend()) {
+		client->add(data, strlen(data));
+		client->send();
+	} else {
+    Serial.println("FAILED to send");
+  }
 }
 
 char packet[255];
@@ -166,23 +218,7 @@ void configModeExitCallback () {
   ESP.restart();
 }
 
-void connectToServer(IPAddress ip) {
-  if (!client.connect(ip, PORT)) {
-    offline = true;
-    Serial.println("Connection to trafikklys host failed -- running offline");
-  } else {
-    offline = false;
-
-    Serial.print("Connected to server at ");
-    Serial.print(ip);
-    Serial.println(":" + (String)PORT);
-   
-    sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
-    client.write(sendBuffer);
-  }
-}
-
-void readUDP() {
+bool readUDP() {
   int packetSize = UDP.parsePacket();
   if (packetSize) {
     Serial.print("Received packet! Size: ");
@@ -195,12 +231,12 @@ void readUDP() {
     Serial.print("Packet received: ");
     Serial.println(packet);
 
-    if (!client.connected()) {
-      connectToServer(UDP.remoteIP());
-    }
-
+    remoteAddress = UDP.remoteIP();
     handlePayload(packet);
+
+    return true;
   }
+  return false;
 }
 
 
@@ -212,8 +248,10 @@ void printBytes(char buf[], int len) {;
   Serial.println("");
 }
 
+
 void loop() {
 
+/*
   // TCP
   if (client.connected()) {
     int b = client.available();
@@ -229,6 +267,8 @@ void loop() {
       }
     }
   }
+  */
+
   /*
   if (!running) {
     delay(100);
@@ -236,15 +276,13 @@ void loop() {
   }
   */
 
-  readUDP();
-
-  
-  delay(100);
+  //readUDP();
 
   if (!DO_MASTER_SYNC) {
     return;
   }
 
+/*
   if (timeSincePing > TICKS_MAX) {
     Serial.println("ping timeout: claiming master...");
     // become master
@@ -294,8 +332,8 @@ void loop() {
       timeSinceReset = 0;
     }
   }
-
-  delay(100);
+*/
+  delay(500);
 }
 
 void printByte(unsigned char b) {
@@ -397,9 +435,11 @@ void handlePayload(char payload[]) {
       }
       // The switch statement does not like for you to define local variables, unless the entire case statement is a block
       char pingResponse[] = { 0x07, 0x04, payload[2], clientIDstring[0], clientIDstring[1], clientIDstring[2], '\0' };  // reply with same pingId, plus my ID
+      /*
       UDP.beginPacket(UDP.remoteIP(), UDP.remotePort());
       UDP.write(pingResponse);
       UDP.endPacket();
+      */
       
       break;
     }
