@@ -19,6 +19,7 @@ public class TrafficLight extends FrameLayout
 	public int cellX = 0;
 	public int cellY = 0;
 	private int mOrientation = 0;
+	private boolean active = false;
 
 	private LinearLayout mLightContainer = null;
 
@@ -69,6 +70,12 @@ public class TrafficLight extends FrameLayout
 		// You could use the <merge> tag to avoid the extra viewgroup, but it nukes some attributes ( e.g. background )
 		// from the xml, so easier to just keep it
 		mLightContainer = mContent.findViewById(R.id.light_container);
+		if (!active) mLightContainer.setAlpha(0.4F);  // initially inactive
+	}
+
+	public void setActive() {
+		mLightContainer.setAlpha(0.9F);  // active
+		active = true;
 	}
 
 	public int getCellOrientation()

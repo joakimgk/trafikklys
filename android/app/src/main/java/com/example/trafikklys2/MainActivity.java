@@ -423,6 +423,14 @@ That said, "redir add tcp:10001:10001" on the emulator console should make it po
                     Socket socket = serverSocket.accept();
                     Log.i("Server", "Client has connected.");
 
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            // Stuff that updates the UI
+                            mContainer.addCell();
+                        }
+                    });
+
                     Client newClient = new Client(clientID++, socket,
                             new Client.OnMessageReceived() {
                                 @Override
@@ -443,15 +451,7 @@ That said, "redir add tcp:10001:10001" on the emulator console should make it po
                                     }
                                     // new client (not seen before)
                                     publishProgress(Utility.clients.size());
-
-                                    runOnUiThread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            // Stuff that updates the UI
-                                            mContainer.addCell();
-                                        }
-                                    });
-
+                                    // new clients (lights) must be mapped up, before being assigned a TrafficLight (with a position/rotation/ID)
                                     return null;
                                 }
                             });

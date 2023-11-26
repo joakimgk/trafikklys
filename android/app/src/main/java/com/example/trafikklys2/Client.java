@@ -25,6 +25,8 @@ public class Client {
     byte[] buffer;
     TrafficLight mTrafficLight;
 
+    boolean active = false;
+
     public Client (long cid) {
         clientID = cid;
     }
@@ -57,46 +59,74 @@ public class Client {
     public class ReadTask extends AsyncTask<byte[], byte[], Boolean> {
 
         @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            Log.i("AsyncTask", "STARTING READER on client " + ID + "...");
+        }
+
+        @Override
         protected Boolean doInBackground(byte[]... bytes) {
-            while (nsocket == null || !nsocket.isConnected()) {
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            try {
-                Log.i("AsyncTask", "STARTING READER on client " + ID + "...");
-                BufferedInputStream input = new BufferedInputStream(nsocket.getInputStream());
-                int i = 0;
-                byte tempdata[] = new byte[4096];
-                while (input.available() > 0) {
-                    tempdata[i] = (byte) input.read();
-                    //Log.v("Reading", "byte #" + i + ": " + tempdata[i]);
-                    i++;
-                }
-                buffer = new byte[i + 1];
-                System.arraycopy(tempdata, 0, buffer, 1, i);
-                buffer[0] = '?';
-
-                if (buffer != null && mMessageListener != null) {
-                    mMessageListener.messageReceived(new Message(ID, buffer));
-
-                    Uri uri = Uri.parse(new String(buffer));
-                    String p_clientID = uri.getQueryParameter("clientID");
-                    if (p_clientID != null) {
-                        Long l = Long.parseLong(p_clientID);
-                        clientID = l.longValue();
-                        mTrafficLight = mMessageListener.onInit(clientID, ID, created);
+            while (nsocket != null) {
+                while (nsocket == null || !nsocket.isConnected()) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
                     }
                 }
-                buffer = null;
 
-            } catch (IOException e) {
-                Log.i("AsyncTask", "error");
-                e.printStackTrace();
-            }
+                try {
+                    //
+                    BufferedInputStream input = new BufferedInputStream(nsocket.getInputStream());
+                    int i = 0;
+                    byte[] tempdata = new byte[4096];
+
+
+                    while (input.available() > 0) {
+                        tempdata[i] = (byte) input.read();
+                        Log.v("Reading", "byte #" + i + ": " + (char) tempdata[i]);
+                        i++;
+                    }
+                    if (i == 0) continue;
+                    tempdata[i] = '\0';
+
+                /*
+                                int bytesRead = 0;
+                while ((bytesRead = input.read(tempdata)) != -1) {
+                    for (int j = 0; j < bytesRead; j++) {
+                        byte u = (byte) input.read();
+                        tempdata[i] = u;
+                        Log.v("Reading", "byte #" + j + " of " + bytesRead + ": " + (char)u);
+                        i++;
+                    }
+                    if (input.available() <= 0) break;
+                }
+                 */
+
+                    Log.v("Reading", "done: " + i + " bytes");
+                    buffer = new byte[i + 1];
+                    System.arraycopy(tempdata, 0, buffer, 1, i);
+                    buffer[0] = '?';
+
+                    if (buffer != null && mMessageListener != null) {
+                        mMessageListener.messageReceived(new Message(ID, buffer));
+
+                        Uri uri = Uri.parse(new String(buffer));
+                        String p_clientID = uri.getQueryParameter("clientID");
+                        if (p_clientID != null) {
+                            Long l = Long.parseLong(p_clientID);
+                            clientID = l.longValue();
+                            mTrafficLight = mMessageListener.onInit(clientID, ID, created);
+                            active = true;
+                            Log.v("Reading", "clientID = " + clientID);
+                        }
+                    }
+                    buffer = null;
+
+                } catch (IOException e) {
+                    Log.i("AsyncTask", "error");
+                    e.printStackTrace();
+                }
 
             /*
 
@@ -121,6 +151,7 @@ public class Client {
                 e.printStackTrace();
             }
             */
+            }
             return null;
         }
     }
