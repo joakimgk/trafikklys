@@ -23,7 +23,9 @@ const short int GREEN = 3;  // remap RX
 const short int YELLOW = 0;
 const short int RED = 2;
 
+
 IPAddress remoteAddress;
+bool connectionReady = false;
 
 int state = LOW;
 
@@ -55,12 +57,14 @@ char sendBuffer[65];
 int resetTick = 0;
 volatile int timeSinceReset = 0;
 
+volatile bool blinkFlag = false;
+
 // ISR to Fire when Timer is triggered
 void ICACHE_RAM_ATTR onTime() {
   //Serial.print(ticks);
   //Serial.print(" ");
   if (ticks++ >= tempo) {
-    blink();
+    blinkFlag = true;
     ticks = 0;
     // tempo = newTempo;  // reset tempo only when current interval is complete
   }
@@ -80,14 +84,26 @@ void ICACHE_RAM_ATTR onTime() {
 
 /* event callbacks */
 static void handleData(void* arg, AsyncClient* client, void *data, size_t len) {
-	Serial.printf("\n data received from %s \n", client->remoteIP().toString().c_str());
-	Serial.write((uint8_t*)data, len);
+  // Copy the received data into the char array
+  memcpy(buffer, data, len);
+
+  // Add a null terminator at the end
+  buffer[len] = '\0';
+
+  handlePayload(buffer);  // maybe this should happen on the main loop,
+  // rather than blocking the handleData handler?
 }
 
 void onConnect(void* arg, AsyncClient* client) {
 	Serial.print("client has been connected to ");
   Serial.print(remoteAddress);
-  Serial.println(" on port " + PORT);
+  Serial.println(" on port " + (String)PORT);
+  connectionReady = true;
+
+  // send clientID, to complete setup
+  sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
+  Serial.println(sendBuffer);
+  send(sendBuffer);
 }
 
 
@@ -96,6 +112,7 @@ void setup() {
   while (!Serial && millis() < 5000);
   delay(200);
 
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   //GPIO 3 (RX) swap the pin to a GPIO.
   pinMode(RED, FUNCTION_3); 
 
@@ -114,7 +131,7 @@ void setup() {
   timer1_write(TIMER_DELAY); // 25000000 / 5 ticks per us from TIM_DIV16 == 200,000 us interval 
 
   sprintf(clientIDstring, "%08x", clientID);
-  Serial.println("\nTrafikklys 3.3\n");
+  Serial.println("\nTrafikklys 3.5\n");
   Serial.print("ClientID: ");
   Serial.println(clientID);
 
@@ -135,6 +152,8 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   client = new AsyncClient;
+  client->onData(&handleData, client);
+  client->onConnect(&onConnect, client);
 
   length = 2;
   tempo = 100;
@@ -149,8 +168,7 @@ void setup() {
   // wait for an UDP packet, to get the IP address of the server
   while (true) {
     if (readUDP()) {
-      client->onData(&handleData, client);
-      client->onConnect(&onConnect, client);
+
       Serial.print("remoteAddress: ");
       Serial.println(remoteAddress);
       if (client->connect(remoteAddress, PORT)) {
@@ -167,31 +185,15 @@ void setup() {
   length = 1;
   program[0] = 0b00000100;
 
-  delay(2000);
 
-  Serial.println("bare en test!");
-  client->write("bare en test!");
-
-  // send clientID, to complete setup
-  sprintf(sendBuffer, "clientID=%lu", (unsigned long)clientID);
-  Serial.println(sendBuffer);
-  client->write(sendBuffer);
-
-/*
-  delay(1000);
   length = 4;
   program[0] = 0b00000001;
   program[1] = 0b00000010;
   program[2] = 0b00000100;
   program[3] = 0b00000010;
-  */
 }
 
 void send(char data[]) {
-  Serial.println("Send: " + (String)data);
-  Serial.println(client->state());
-  Serial.println(client->space());
-  Serial.println(client->canSend() ? "can send" : "can not send");
 	if (client->space() > 32 && client->canSend()) {
 		client->add(data, strlen(data));
 		client->send();
@@ -250,6 +252,16 @@ void printBytes(char buf[], int len) {;
 
 
 void loop() {
+  if (blinkFlag) {
+    blink();
+    blinkFlag = false;
+  }
+/*
+  delay(2000);
+  if (connectionReady) {
+    send("heisan");
+  }
+  */
 
 /*
   // TCP
@@ -278,9 +290,11 @@ void loop() {
 
   //readUDP();
 
+/*
   if (!DO_MASTER_SYNC) {
     return;
   }
+  */
 
 /*
   if (timeSincePing > TICKS_MAX) {
@@ -333,7 +347,7 @@ void loop() {
     }
   }
 */
-  delay(500);
+  delay(10);
 }
 
 void printByte(unsigned char b) {
@@ -343,7 +357,10 @@ void printByte(unsigned char b) {
 }
 
 ICACHE_RAM_ATTR int getBit(unsigned char b, int i) {
-  return ((b >> i) & 0b00000001) == 1 ? LOW : HIGH;
+  bool inverted = false;
+  uint8_t off = (inverted ? HIGH : LOW);
+  uint8_t on =  (inverted ? LOW : HIGH);
+  return ((b >> i) & 0b00000001) == 1 ? on : off;
 }
 
 ICACHE_RAM_ATTR void blink() {
@@ -367,8 +384,8 @@ void handlePayload(char payload[]) {
   char command = payload[0];
   int len = (int)payload[1];
 
-  Serial.print("handlePayload ");
-  printBytes(payload, len + 2);
+  //Serial.print("handlePayload ");
+  //printBytes(payload, len + 2);
 
   uint16_t test;
   uint8_t i;
@@ -467,7 +484,7 @@ void handlePayload(char payload[]) {
 
   payload = payload + len + 2;
   if (payload[0] != '\0') {
-    Serial.println("\tMORE TO PROCESS!");
+    //Serial.println("\tMORE TO PROCESS!");
     handlePayload(payload);
   }
 }
